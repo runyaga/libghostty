@@ -8,15 +8,18 @@ from [Ghostty](https://ghostty.org).
 
 | Android | iOS | macOS | Linux | Windows | Web |
 |:-------:|:---:|:-----:|:-----:|:-------:|:---:|
-|    ✅    |  ✅  |   ✅   |  ⚠️   |   ⚠️    |  ✅  |
+|    ✅    |  ✅  |   ✅   |   ✅   |    ✅    |  ✅  |
 
-> Linux and Windows binaries are built but unconfirmed locally.
+> [!CAUTION]
+> This package is under active development. The underlying native library (patch)
+> has not yet landed upstream in Ghostty. Expect breaking changes between releases.
+> Linux and Windows are CI-tested but unverified in a Flutter application.
 
 ## Getting started
 
 ```yaml
 dependencies:
-  libghostty: ^0.0.1
+  libghostty: ^0.0.2
 ```
 
 ```dart

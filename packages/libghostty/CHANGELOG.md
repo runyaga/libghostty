@@ -1,5 +1,34 @@
 # Changelog
 
+## 0.0.2
+
+### Added
+
+- **Sealed `TerminalEvent` hierarchy** — typed events (`BellReceived`,
+  `TitleChanged`, `CursorChanged`, `MouseShapeChanged`, `ResponseReceived`,
+  `ScreenChanged`, `ModeChanged`) replace ad-hoc state polling.
+- **`TerminalOptions`** — configure foreground/background color and scrollback
+  limit at terminal creation.
+- **Mouse support** — `MouseShape` and `MouseTracking` exposed via the
+  terminal API.
+- **`DirtyState` enum** — `clean`/`partial`/`full` for render-level dirty
+  tracking on `Screen`.
+- **Reusable viewport buffer** — `Screen` reuses a single buffer across reads,
+  reducing per-frame allocations.
+- **Row wrapping detection** — `Screen` and `Scrollback` report whether a row
+  is soft-wrapped.
+- **Scrollback grapheme support** — `Scrollback` returns full grapheme
+  clusters.
+- **`CellWidth` and `SemanticContent`** — new cell metadata types.
+- **256-color palette** — CIELAB interpolation and full 256-color palette
+  generation with base16 theme support.
+
+### Changed
+
+- **`TerminalViewport` removed** — viewport reading now lives on `Screen`
+  directly.
+- Bumped upstream ghostty to `055ed285`.
+
 ## [0.0.1] - 2026-02-25
 
 ### Added
