@@ -55,10 +55,10 @@ void main() {
     test('alternate screen switch', () {
       terminal.write(Uint8List.fromList('Primary'.codeUnits));
       terminal.write(Uint8List.fromList('\x1b[?1049h'.codeUnits));
-      expect(terminal.modes.alternateScreen, isTrue);
+      expect(terminal.modes.screenMode, ScreenMode.alternate);
       expect(terminal.screen.cellAt(0, 0), Cell.empty);
       terminal.write(Uint8List.fromList('\x1b[?1049l'.codeUnits));
-      expect(terminal.modes.alternateScreen, isFalse);
+      expect(terminal.modes.screenMode, ScreenMode.primary);
       expect(terminal.screen.cellAt(0, 0).content, 'P');
     });
 

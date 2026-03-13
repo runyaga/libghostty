@@ -363,6 +363,7 @@ abstract final class TerminalModeBits {
   static const int mouseButtonEvent = 1 << 8;
   static const int mouseAnyEvent = 1 << 9;
   static const int alternateScreen = 1 << 10;
+  static const int mouseAlternateScroll = 1 << 11;
 }
 
 // Bit flags from GhosttyCell.flags in the C struct.

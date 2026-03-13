@@ -201,7 +201,7 @@ class Terminal extends Disposable {
       final newModes = _readModes();
       if (newModes != _lastModes) {
         _lastModes = newModes;
-        _onEvent.add(const ModeChanged());
+        _onEvent.add(ModeChanged(newModes));
       }
     }
 
@@ -236,7 +236,9 @@ class Terminal extends Disposable {
     }
 
     return TerminalModes(
-      alternateScreen: mode & TerminalModeBits.alternateScreen != 0,
+      screenMode: mode & TerminalModeBits.alternateScreen != 0
+          ? .alternate
+          : .primary,
       bracketedPaste: mode & TerminalModeBits.bracketedPaste != 0,
       cursorKeyApplication: mode & TerminalModeBits.cursorKeys != 0,
       keypadApplication: mode & TerminalModeBits.keypadApplication != 0,
@@ -244,6 +246,7 @@ class Terminal extends Disposable {
       originMode: mode & TerminalModeBits.origin != 0,
       insertMode: mode & TerminalModeBits.insert != 0,
       mouseTracking: mouseTracking(),
+      mouseAlternateScroll: mode & TerminalModeBits.mouseAlternateScroll != 0,
     );
   }
 

@@ -84,6 +84,16 @@ void main() {
         expect(terminal.modes.insertMode, isFalse);
       });
 
+      test('mouseAlternateScroll tracks DECSET 1007', () {
+        expect(terminal.modes.mouseAlternateScroll, isTrue);
+
+        terminal.write(.fromList('\x1b[?1007l'.codeUnits));
+        expect(terminal.modes.mouseAlternateScroll, isFalse);
+
+        terminal.write(.fromList('\x1b[?1007h'.codeUnits));
+        expect(terminal.modes.mouseAlternateScroll, isTrue);
+      });
+
       group('mouseTracking', () {
         test('default is none', () {
           expect(terminal.modes.mouseTracking, MouseTracking.none);
@@ -147,12 +157,12 @@ void main() {
       terminal.write(.fromList('Primary'.codeUnits));
       terminal.write(.fromList('\x1b[?1049h'.codeUnits));
 
-      expect(terminal.modes.alternateScreen, isTrue);
+      expect(terminal.modes.screenMode, ScreenMode.alternate);
       expect(terminal.screen.cellAt(0, 0), Cell.empty);
 
       terminal.write(.fromList('\x1b[?1049l'.codeUnits));
 
-      expect(terminal.modes.alternateScreen, isFalse);
+      expect(terminal.modes.screenMode, ScreenMode.primary);
       expect(terminal.screen.cellAt(0, 0).content, 'P');
     });
 
@@ -225,6 +235,16 @@ void main() {
         });
         terminal.write(.fromList('\x1b]22;pointer\x1b\\'.codeUnits));
         expect(count, 0);
+      });
+
+      test('ModeChanged carries modes snapshot', () {
+        TerminalModes? received;
+        terminal.onEvent.listen((e) {
+          if (e case ModeChanged(:final modes)) received = modes;
+        });
+        terminal.write(.fromList('\x1b[?2004h'.codeUnits));
+        expect(received, isNotNull);
+        expect(received!.bracketedPaste, isTrue);
       });
 
       test('ScreenChanged fires on write', () {

@@ -12,10 +12,10 @@ index 4f8fef88e..1a4656385 100644
  #ifdef __cplusplus
 diff --git a/include/ghostty/vt/terminal.h b/include/ghostty/vt/terminal.h
 new file mode 100644
-index 000000000..261724cdb
+index 000000000..0434d2c49
 --- /dev/null
 +++ b/include/ghostty/vt/terminal.h
-@@ -0,0 +1,733 @@
+@@ -0,0 +1,734 @@
 +/**
 + * @file terminal.h
 + *
@@ -260,6 +260,7 @@ index 000000000..261724cdb
 +#define GHOSTTY_MODE_MOUSE_BUTTON_EVENT (1 << 8)
 +#define GHOSTTY_MODE_MOUSE_ANY_EVENT    (1 << 9)
 +#define GHOSTTY_MODE_ALTERNATE_SCREEN   (1 << 10)
++#define GHOSTTY_MODE_MOUSE_ALT_SCROLL   (1 << 11)
 +/** @} */
 +
 +/**
@@ -859,10 +860,10 @@ index bc92597f5..1da26a020 100644
      _ = @import("../../lib/allocator.zig");
 diff --git a/src/terminal/c/terminal.zig b/src/terminal/c/terminal.zig
 new file mode 100644
-index 000000000..1091a554f
+index 000000000..8a1f940ab
 --- /dev/null
 +++ b/src/terminal/c/terminal.zig
-@@ -0,0 +1,1222 @@
+@@ -0,0 +1,1224 @@
 +const std = @import("std");
 +const Allocator = std.mem.Allocator;
 +const lib_alloc = @import("../../lib/allocator.zig");
@@ -1551,6 +1552,7 @@ index 000000000..1091a554f
 +pub const mode_mouse_button_event: u32 = 1 << 8;
 +pub const mode_mouse_any_event: u32 = 1 << 9;
 +pub const mode_alternate_screen: u32 = 1 << 10;
++pub const mode_mouse_alt_scroll: u32 = 1 << 11;
 +
 +pub fn get_modes(handle: Handle) callconv(.c) u32 {
 +    const wrapper = handle orelse return 0;
@@ -1567,6 +1569,7 @@ index 000000000..1091a554f
 +    if (t.modes.get(.mouse_event_button)) result |= mode_mouse_button_event;
 +    if (t.modes.get(.mouse_event_any)) result |= mode_mouse_any_event;
 +    if (t.screens.active_key == .alternate) result |= mode_alternate_screen;
++    if (t.modes.get(.mouse_alternate_scroll)) result |= mode_mouse_alt_scroll;
 +    return result;
 +}
 +

@@ -17,8 +17,8 @@ void main() {
         print('Cursor: ${cursor.col}, ${cursor.row}');
       case MouseShapeChanged(:final shape):
         print('Mouse shape: $shape');
-      case ModeChanged():
-        print('Mode changed');
+      case ModeChanged(:final modes):
+        print('Mode changed: $modes');
       case ScreenChanged():
         print('Screen changed');
       case ResponseReceived(:final response):

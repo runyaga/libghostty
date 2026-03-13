@@ -21,7 +21,7 @@ export 'src/terminal/cell.dart'
     show Cell, CellStyle, CellWidth, SemanticContent;
 export 'src/terminal/cursor.dart' show Cursor, CursorShape;
 export 'src/terminal/line.dart' show Line;
-export 'src/terminal/modes.dart' show TerminalModes;
+export 'src/terminal/modes.dart' show ScreenMode, TerminalModes;
 export 'src/terminal/mouse.dart' show MouseShape, MouseTracking;
 export 'src/terminal/screen.dart' show DirtyState, Screen;
 export 'src/terminal/scrollback.dart' show Scrollback;
