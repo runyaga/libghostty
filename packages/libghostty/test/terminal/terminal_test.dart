@@ -562,6 +562,30 @@ void main() {
       });
     });
 
+    test('wide char sets CellWidth on both cells', () {
+      terminal.write(
+        Uint8List.fromList([
+          0xE6, 0x97, 0xA5, // 日 U+65E5
+          ...('A'.codeUnits),
+        ]),
+      );
+      expect(terminal.screen.cellAt(0, 0).wide, CellWidth.wide);
+      expect(terminal.screen.cellAt(0, 1).wide, CellWidth.spacerTail);
+      expect(terminal.screen.cellAt(0, 2).wide, CellWidth.narrow);
+    });
+
+    test('long line wraps across rows with correct cells', () {
+      final t = Terminal(cols: 5, rows: 3);
+      addTearDown(t.dispose);
+      t.write(.fromList('ABCDEFGH'.codeUnits));
+
+      expect(t.screen.cellAt(0, 4).content, 'E');
+      expect(t.screen.isRowWrapped(0), isTrue);
+      expect(t.screen.cellAt(1, 0).content, 'F');
+      expect(t.screen.cellAt(1, 2).content, 'H');
+      expect(t.screen.isRowWrapped(1), isFalse);
+    });
+
     group('dirtyState', () {
       test('writing text produces partial dirty state', () {
         terminal.clearContentChanges();

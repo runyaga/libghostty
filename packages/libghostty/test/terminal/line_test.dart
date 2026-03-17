@@ -38,6 +38,17 @@ void main() {
       expect(line.text, 'A B');
     });
 
+    test('text handles wide characters and mixed content', () {
+      const line = Line([
+        Cell(content: 'A'),
+        Cell(content: '日', wide: CellWidth.wide),
+        Cell(wide: CellWidth.spacerTail),
+        Cell(content: 'B'),
+        Cell.empty,
+      ]);
+      expect(line.text, 'A日B');
+    });
+
     test('cells are iterable', () {
       final cells = [const Cell(content: 'X'), const Cell(content: 'Y')];
       final line = Line(cells);

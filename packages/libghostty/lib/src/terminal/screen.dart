@@ -199,7 +199,10 @@ extension RawCellsExtension on RawCells {
     String? hyperlink,
   }) {
     final cp = codepoint(index);
-    if (cp == 0) return Cell.empty;
+    if (cp == 0) {
+      final width = CellWidthNative.fromNative(wide(index));
+      return width == .narrow ? Cell.empty : Cell(wide: width);
+    }
 
     final fr = fgR(index);
     final fg = fgG(index);

@@ -21,11 +21,13 @@ class Line {
     final buffer = StringBuffer();
     var lastNonEmpty = -1;
     for (var i = 0; i < _cells.length; i++) {
-      if (!_cells[i].isEmpty) lastNonEmpty = i;
+      final cell = _cells[i];
+      if (cell.content.isNotEmpty) lastNonEmpty = i;
     }
     for (var i = 0; i <= lastNonEmpty; i++) {
-      final content = _cells[i].content;
-      buffer.write(content.isEmpty ? ' ' : content);
+      final cell = _cells[i];
+      if (cell.wide == .spacerTail || cell.wide == .spacerHead) continue;
+      buffer.write(cell.content.isEmpty ? ' ' : cell.content);
     }
     return buffer.toString();
   }
