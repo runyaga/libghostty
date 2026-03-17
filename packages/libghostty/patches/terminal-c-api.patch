@@ -912,7 +912,7 @@ new file mode 100644
 index 000000000..3ba03a7aa
 --- /dev/null
 +++ b/src/terminal/c/terminal.zig
-@@ -0,0 +1,1340 @@
+@@ -0,0 +1,1338 @@
 +const std = @import("std");
 +const Allocator = std.mem.Allocator;
 +const lib_alloc = @import("../../lib/allocator.zig");
@@ -1029,7 +1029,7 @@ index 000000000..3ba03a7aa
 +        self: *EventHandler,
 +        comptime action: stream_pkg.Action.Tag,
 +        value: stream_pkg.Action.Value(action),
-+    ) !void {
++    ) void {
 +        switch (action) {
 +            .bell => {
 +                self.wrapper.bell_count +|= 1;
@@ -1042,7 +1042,7 @@ index 000000000..3ba03a7aa
 +                self.wrapper.pending_events |= event_title_changed;
 +            },
 +            .set_mode, .reset_mode => {
-+                try self.readonly.vt(action, value);
++                self.readonly.vt(action, value);
 +                self.wrapper.pending_events |= event_repaint | event_mode_changed;
 +            },
 +            .device_attributes => self.deviceAttributes(value),
@@ -1053,7 +1053,7 @@ index 000000000..3ba03a7aa
 +            .kitty_keyboard_query => self.kittyKeyboardQuery(),
 +            .xtversion => self.appendResponse("\x1bP>|ghostty-vt\x1b\\"),
 +            else => {
-+                try self.readonly.vt(action, value);
++                self.readonly.vt(action, value);
 +                self.wrapper.pending_events |= event_repaint;
 +                if (self.wrapper.terminal.mouse_shape != self.wrapper.last_mouse_shape) {
 +                    self.wrapper.last_mouse_shape = self.wrapper.terminal.mouse_shape;
@@ -1225,9 +1225,7 @@ index 000000000..3ba03a7aa
 +) callconv(.c) u32 {
 +    const wrapper = handle orelse return 0;
 +    wrapper.pending_events = 0;
-+    wrapper.stream.nextSlice(data[0..len]) catch |err| {
-+        log.warn("write error: {}", .{err});
-+    };
++    wrapper.stream.nextSlice(data[0..len]);
 +    return wrapper.pending_events;
 +}
 +
