@@ -7,17 +7,19 @@ import 'package:meta/meta.dart';
 /// print('${size.cols}×${size.rows}');
 /// ```
 @immutable
-class TerminalSize {
+final class TerminalSize {
   /// Number of character columns.
   final int cols;
 
   /// Number of character rows.
   final int rows;
 
-  const TerminalSize({required this.cols, required this.rows});
+  const TerminalSize({required this.cols, required this.rows})
+    : assert(cols >= 0, 'cols must be non-negative'),
+      assert(rows >= 0, 'rows must be non-negative');
 
   @override
-  int get hashCode => Object.hash(TerminalSize, cols, rows);
+  int get hashCode => Object.hash(cols, rows);
 
   @override
   bool operator ==(Object other) =>

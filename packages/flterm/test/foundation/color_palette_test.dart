@@ -1,4 +1,4 @@
-import 'package:flterm/foundation.dart';
+import 'package:flterm/src/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -14,31 +14,32 @@ void main() {
       );
     });
 
-    test('index operator returns a Color', () {
-      expect(palette[0], isA<Color>());
-    });
-
     test('indices 0–15 match the provided ANSI colors', () {
       for (var i = 0; i < 16; i++) {
         expect(palette[i], _ansiColors[i], reason: 'index $i');
       }
     });
 
-    test('all 256 indices are accessible', () {
+    test('all 256 indices return opaque Colors', () {
       for (var i = 0; i < 256; i++) {
-        expect(() => palette[i], returnsNormally, reason: 'index $i');
-      }
-    });
-
-    test('indices 16–255 are valid opaque Colors', () {
-      for (var i = 16; i < 256; i++) {
         final c = palette[i];
+        expect(c, isA<Color>(), reason: 'index $i');
         expect(
           (c.a * 255.0).round().clamp(0, 255),
           255,
           reason: 'index $i should be opaque',
         );
       }
+    });
+
+    test('equality and hashCode', () {
+      final other = ColorPalette.fromAnsiColors(
+        ansiColors: _ansiColors,
+        background: _bg,
+        foreground: _fg,
+      );
+      expect(palette, equals(other));
+      expect(palette.hashCode, other.hashCode);
     });
 
     test('cube corner index 16 approximates the background color', () {

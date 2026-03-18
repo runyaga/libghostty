@@ -4,16 +4,16 @@ import 'package:meta/meta.dart';
 
 /// Pixel dimensions of a single terminal cell.
 ///
-/// Computed by measuring a reference character with [CellMetrics.measure].
-/// Used by the rendering layer to position glyphs and compute terminal
-/// dimensions from available pixel space.
-///
 /// ```dart
-/// final metrics = CellMetrics.measure(fontFamily: 'monospace', fontSize: 14);
-/// final cols = (availableWidth / metrics.cellWidth).floor();
+/// const metrics = CellMetrics(
+///   cellWidth: 8.4,
+///   cellHeight: 17.0,
+///   baseline: 13.0,
+/// );
+/// final (cols, rows) = metrics.gridSize(width, height);
 /// ```
 @immutable
-class CellMetrics {
+final class CellMetrics {
   /// Width of one character cell in logical pixels.
   final double cellWidth;
 
@@ -27,32 +27,12 @@ class CellMetrics {
     required this.cellWidth,
     required this.cellHeight,
     required this.baseline,
-  });
-
-  /// Measures cell dimensions by laying out a reference character.
-  ///
-  /// Uses [fontFamily] and [fontSize] to build a paragraph containing 'M'
-  /// and reads the resulting layout metrics.
-  factory CellMetrics.measure({
-    required String fontFamily,
-    required double fontSize,
-  }) {
-    final style = ParagraphStyle(fontFamily: fontFamily, fontSize: fontSize);
-    final paragraph = (ParagraphBuilder(style)..addText('M')).build()
-      ..layout(const ParagraphConstraints(width: double.infinity));
-    final metrics = CellMetrics(
-      cellHeight: paragraph.height,
-      cellWidth: paragraph.longestLine,
-      baseline: paragraph.alphabeticBaseline,
-    );
-
-    paragraph.dispose();
-
-    return metrics;
-  }
+  }) : assert(cellWidth >= 0, 'cellWidth must be non-negative'),
+       assert(cellHeight >= 0, 'cellHeight must be non-negative'),
+       assert(baseline >= 0, 'baseline must be non-negative');
 
   @override
-  int get hashCode => Object.hash(CellMetrics, cellWidth, cellHeight, baseline);
+  int get hashCode => Object.hash(cellWidth, cellHeight, baseline);
 
   @override
   bool operator ==(Object other) =>
@@ -60,6 +40,35 @@ class CellMetrics {
       other.cellWidth == cellWidth &&
       other.cellHeight == cellHeight &&
       other.baseline == baseline;
+
+  /// Converts a pixel [position] to terminal cell coordinates.
+  (int row, int col) cellAt(Offset position) {
+    final row = cellHeight > 0 ? (position.dy / cellHeight).floor() : 0;
+    final col = cellWidth > 0 ? (position.dx / cellWidth).floor() : 0;
+    return (row, col);
+  }
+
+  /// Returns the pixel rect for a horizontal range of cells on [row].
+  Rect cellRangeRect(int row, int startCol, int endCol, Offset offset) {
+    return Rect.fromLTWH(
+      offset.dx + startCol * cellWidth,
+      offset.dy + row * cellHeight,
+      (endCol - startCol) * cellWidth,
+      cellHeight,
+    );
+  }
+
+  /// Returns the pixel rect for a single cell at ([row], [col]).
+  Rect cellRect(int row, int col, Offset offset) {
+    return cellRangeRect(row, col, col + 1, offset);
+  }
+
+  /// Computes how many columns and rows fit in the given pixel dimensions.
+  (int cols, int rows) gridSize(double width, double height) {
+    final cols = cellWidth > 0 ? (width / cellWidth).floor() : 0;
+    final rows = cellHeight > 0 ? (height / cellHeight).floor() : 0;
+    return (cols, rows);
+  }
 
   @override
   String toString() =>

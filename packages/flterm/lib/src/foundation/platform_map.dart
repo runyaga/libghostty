@@ -1,0 +1,209 @@
+import 'package:flutter/services.dart' show PhysicalKeyboardKey;
+import 'package:flutter/widgets.dart' show MouseCursor, SystemMouseCursors;
+import 'package:libghostty/libghostty.dart' show Key, MouseShape;
+
+final Map<int, Key> _codepointToKey = {
+  0x20: Key.space,
+  for (var i = 0; i < 26; i++) 0x61 + i: Key.values[Key.keyA.index + i],
+  for (var i = 0; i < 26; i++) 0x41 + i: Key.values[Key.keyA.index + i],
+  for (var i = 0; i < 10; i++) 0x30 + i: Key.values[Key.digit0.index + i],
+};
+
+final Map<PhysicalKeyboardKey, Key> _keyMap = {
+  PhysicalKeyboardKey.backquote: Key.backquote,
+  PhysicalKeyboardKey.backslash: Key.backslash,
+  PhysicalKeyboardKey.bracketLeft: Key.bracketLeft,
+  PhysicalKeyboardKey.bracketRight: Key.bracketRight,
+  PhysicalKeyboardKey.comma: Key.comma,
+  PhysicalKeyboardKey.equal: Key.equal,
+  PhysicalKeyboardKey.minus: Key.minus,
+  PhysicalKeyboardKey.period: Key.period,
+  PhysicalKeyboardKey.quote: Key.quote,
+  PhysicalKeyboardKey.semicolon: Key.semicolon,
+  PhysicalKeyboardKey.slash: Key.slash,
+  PhysicalKeyboardKey.intlBackslash: Key.intlBackslash,
+  PhysicalKeyboardKey.intlRo: Key.intlRo,
+  PhysicalKeyboardKey.intlYen: Key.intlYen,
+
+  PhysicalKeyboardKey.digit0: Key.digit0,
+  PhysicalKeyboardKey.digit1: Key.digit1,
+  PhysicalKeyboardKey.digit2: Key.digit2,
+  PhysicalKeyboardKey.digit3: Key.digit3,
+  PhysicalKeyboardKey.digit4: Key.digit4,
+  PhysicalKeyboardKey.digit5: Key.digit5,
+  PhysicalKeyboardKey.digit6: Key.digit6,
+  PhysicalKeyboardKey.digit7: Key.digit7,
+  PhysicalKeyboardKey.digit8: Key.digit8,
+  PhysicalKeyboardKey.digit9: Key.digit9,
+
+  PhysicalKeyboardKey.keyA: Key.keyA,
+  PhysicalKeyboardKey.keyB: Key.keyB,
+  PhysicalKeyboardKey.keyC: Key.keyC,
+  PhysicalKeyboardKey.keyD: Key.keyD,
+  PhysicalKeyboardKey.keyE: Key.keyE,
+  PhysicalKeyboardKey.keyF: Key.keyF,
+  PhysicalKeyboardKey.keyG: Key.keyG,
+  PhysicalKeyboardKey.keyH: Key.keyH,
+  PhysicalKeyboardKey.keyI: Key.keyI,
+  PhysicalKeyboardKey.keyJ: Key.keyJ,
+  PhysicalKeyboardKey.keyK: Key.keyK,
+  PhysicalKeyboardKey.keyL: Key.keyL,
+  PhysicalKeyboardKey.keyM: Key.keyM,
+  PhysicalKeyboardKey.keyN: Key.keyN,
+  PhysicalKeyboardKey.keyO: Key.keyO,
+  PhysicalKeyboardKey.keyP: Key.keyP,
+  PhysicalKeyboardKey.keyQ: Key.keyQ,
+  PhysicalKeyboardKey.keyR: Key.keyR,
+  PhysicalKeyboardKey.keyS: Key.keyS,
+  PhysicalKeyboardKey.keyT: Key.keyT,
+  PhysicalKeyboardKey.keyU: Key.keyU,
+  PhysicalKeyboardKey.keyV: Key.keyV,
+  PhysicalKeyboardKey.keyW: Key.keyW,
+  PhysicalKeyboardKey.keyX: Key.keyX,
+  PhysicalKeyboardKey.keyY: Key.keyY,
+  PhysicalKeyboardKey.keyZ: Key.keyZ,
+
+  PhysicalKeyboardKey.altLeft: Key.altLeft,
+  PhysicalKeyboardKey.altRight: Key.altRight,
+  PhysicalKeyboardKey.controlLeft: Key.controlLeft,
+  PhysicalKeyboardKey.controlRight: Key.controlRight,
+  PhysicalKeyboardKey.metaLeft: Key.metaLeft,
+  PhysicalKeyboardKey.metaRight: Key.metaRight,
+  PhysicalKeyboardKey.shiftLeft: Key.shiftLeft,
+  PhysicalKeyboardKey.shiftRight: Key.shiftRight,
+  PhysicalKeyboardKey.capsLock: Key.capsLock,
+  PhysicalKeyboardKey.numLock: Key.numLock,
+
+  PhysicalKeyboardKey.backspace: Key.backspace,
+  PhysicalKeyboardKey.enter: Key.enter,
+  PhysicalKeyboardKey.space: Key.space,
+  PhysicalKeyboardKey.tab: Key.tab,
+
+  PhysicalKeyboardKey.arrowDown: Key.arrowDown,
+  PhysicalKeyboardKey.arrowLeft: Key.arrowLeft,
+  PhysicalKeyboardKey.arrowRight: Key.arrowRight,
+  PhysicalKeyboardKey.arrowUp: Key.arrowUp,
+  PhysicalKeyboardKey.delete: Key.delete,
+  PhysicalKeyboardKey.end: Key.end,
+  PhysicalKeyboardKey.home: Key.home,
+  PhysicalKeyboardKey.insert: Key.insert,
+  PhysicalKeyboardKey.pageDown: Key.pageDown,
+  PhysicalKeyboardKey.pageUp: Key.pageUp,
+
+  PhysicalKeyboardKey.escape: Key.escape,
+  PhysicalKeyboardKey.f1: Key.f1,
+  PhysicalKeyboardKey.f2: Key.f2,
+  PhysicalKeyboardKey.f3: Key.f3,
+  PhysicalKeyboardKey.f4: Key.f4,
+  PhysicalKeyboardKey.f5: Key.f5,
+  PhysicalKeyboardKey.f6: Key.f6,
+  PhysicalKeyboardKey.f7: Key.f7,
+  PhysicalKeyboardKey.f8: Key.f8,
+  PhysicalKeyboardKey.f9: Key.f9,
+  PhysicalKeyboardKey.f10: Key.f10,
+  PhysicalKeyboardKey.f11: Key.f11,
+  PhysicalKeyboardKey.f12: Key.f12,
+  PhysicalKeyboardKey.f13: Key.f13,
+  PhysicalKeyboardKey.f14: Key.f14,
+  PhysicalKeyboardKey.f15: Key.f15,
+  PhysicalKeyboardKey.f16: Key.f16,
+  PhysicalKeyboardKey.f17: Key.f17,
+  PhysicalKeyboardKey.f18: Key.f18,
+  PhysicalKeyboardKey.f19: Key.f19,
+  PhysicalKeyboardKey.f20: Key.f20,
+  PhysicalKeyboardKey.f21: Key.f21,
+  PhysicalKeyboardKey.f22: Key.f22,
+  PhysicalKeyboardKey.f23: Key.f23,
+  PhysicalKeyboardKey.f24: Key.f24,
+
+  PhysicalKeyboardKey.numpad0: Key.numpad0,
+  PhysicalKeyboardKey.numpad1: Key.numpad1,
+  PhysicalKeyboardKey.numpad2: Key.numpad2,
+  PhysicalKeyboardKey.numpad3: Key.numpad3,
+  PhysicalKeyboardKey.numpad4: Key.numpad4,
+  PhysicalKeyboardKey.numpad5: Key.numpad5,
+  PhysicalKeyboardKey.numpad6: Key.numpad6,
+  PhysicalKeyboardKey.numpad7: Key.numpad7,
+  PhysicalKeyboardKey.numpad8: Key.numpad8,
+  PhysicalKeyboardKey.numpad9: Key.numpad9,
+  PhysicalKeyboardKey.numpadAdd: Key.numpadAdd,
+  PhysicalKeyboardKey.numpadDecimal: Key.numpadDecimal,
+  PhysicalKeyboardKey.numpadDivide: Key.numpadDivide,
+  PhysicalKeyboardKey.numpadEnter: Key.numpadEnter,
+  PhysicalKeyboardKey.numpadEqual: Key.numpadEqual,
+  PhysicalKeyboardKey.numpadMultiply: Key.numpadMultiply,
+  PhysicalKeyboardKey.numpadSubtract: Key.numpadSubtract,
+  PhysicalKeyboardKey.numpadComma: Key.numpadComma,
+  PhysicalKeyboardKey.numpadParenLeft: Key.numpadParenLeft,
+  PhysicalKeyboardKey.numpadParenRight: Key.numpadParenRight,
+
+  PhysicalKeyboardKey.contextMenu: Key.contextMenu,
+  PhysicalKeyboardKey.printScreen: Key.printScreen,
+  PhysicalKeyboardKey.scrollLock: Key.scrollLock,
+  PhysicalKeyboardKey.pause: Key.pause,
+  PhysicalKeyboardKey.fn: Key.fn,
+
+  PhysicalKeyboardKey.convert: Key.convert,
+  PhysicalKeyboardKey.nonConvert: Key.nonConvert,
+  PhysicalKeyboardKey.kanaMode: Key.kanaMode,
+
+  PhysicalKeyboardKey.audioVolumeDown: Key.audioVolumeDown,
+  PhysicalKeyboardKey.audioVolumeMute: Key.audioVolumeMute,
+  PhysicalKeyboardKey.audioVolumeUp: Key.audioVolumeUp,
+};
+
+final Map<Key, int> _keyToCodepoint = {
+  for (var i = 0; i < 26; i++) Key.values[Key.keyA.index + i]: 0x61 + i,
+  for (var i = 0; i < 10; i++) Key.values[Key.digit0.index + i]: 0x30 + i,
+};
+
+MouseCursor cursorFromMouseShape(MouseShape shape) {
+  return switch (shape) {
+    .defaultCursor => SystemMouseCursors.basic,
+    .contextMenu => SystemMouseCursors.contextMenu,
+    .help => SystemMouseCursors.help,
+    .pointer => SystemMouseCursors.click,
+    .progress => SystemMouseCursors.progress,
+    .wait => SystemMouseCursors.wait,
+    .cell => SystemMouseCursors.cell,
+    .crosshair => SystemMouseCursors.precise,
+    .text => SystemMouseCursors.text,
+    .verticalText => SystemMouseCursors.verticalText,
+    .alias => SystemMouseCursors.alias,
+    .copy => SystemMouseCursors.copy,
+    .move => SystemMouseCursors.move,
+    .noDrop => SystemMouseCursors.noDrop,
+    .notAllowed => SystemMouseCursors.forbidden,
+    .grab => SystemMouseCursors.grab,
+    .grabbing => SystemMouseCursors.grabbing,
+    .allScroll => SystemMouseCursors.allScroll,
+    .colResize => SystemMouseCursors.resizeColumn,
+    .rowResize => SystemMouseCursors.resizeRow,
+    .nResize => SystemMouseCursors.resizeUp,
+    .eResize => SystemMouseCursors.resizeRight,
+    .sResize => SystemMouseCursors.resizeDown,
+    .wResize => SystemMouseCursors.resizeLeft,
+    .neResize => SystemMouseCursors.resizeUpRight,
+    .nwResize => SystemMouseCursors.resizeUpLeft,
+    .seResize => SystemMouseCursors.resizeDownRight,
+    .swResize => SystemMouseCursors.resizeDownLeft,
+    .ewResize ||
+    .nsResize ||
+    .neswResize ||
+    .nwseResize => SystemMouseCursors.basic,
+    .zoomIn => SystemMouseCursors.zoomIn,
+    .zoomOut => SystemMouseCursors.zoomOut,
+  };
+}
+
+/// Returns the [Key] for [codepoint], or null if unmapped.
+Key? keyFromCodepoint(int codepoint) => _codepointToKey[codepoint];
+
+/// Returns the [Key] for [physical], or [Key.unidentified] if unmapped.
+Key keyFromPhysical(PhysicalKeyboardKey physical) {
+  return _keyMap[physical] ?? .unidentified;
+}
+
+/// Returns the lowercase ASCII codepoint for [key], or 0 for non-character
+/// keys.
+int unshiftedCodepointForKey(Key key) => _keyToCodepoint[key] ?? 0;

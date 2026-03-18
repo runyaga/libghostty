@@ -17,7 +17,7 @@ import 'package:meta/meta.dart';
 /// final red = palette[NamedColor.red]; // index 1
 /// ```
 @immutable
-class ColorPalette {
+final class ColorPalette {
   final List<Color> _colors;
 
   /// Generates a [ColorPalette] from 16 ANSI base colors.
@@ -45,10 +45,11 @@ class ColorPalette {
       foreground: _colorToRgb(foreground),
     );
 
-    return ColorPalette._(rgbResult.map(_rgbToColor).toList());
+    return ColorPalette._(List<Color>.unmodifiable(rgbResult.map(_rgbToColor)));
   }
 
-  const ColorPalette._(List<Color> colors) : _colors = colors;
+  const ColorPalette._(this._colors)
+    : assert(_colors.length == 256, 'palette must contain exactly 256 colors');
 
   @override
   int get hashCode => Object.hashAll(_colors);
@@ -65,10 +66,19 @@ class ColorPalette {
   /// Returns the [Color] at the given palette [index] (0–255).
   Color operator [](int index) => _colors[index];
 
-  static RgbColor _colorToRgb(Color c) => RgbColor(
-    (c.r * 255.0).round().clamp(0, 255),
-    (c.g * 255.0).round().clamp(0, 255),
-    (c.b * 255.0).round().clamp(0, 255),
+  /// Linearly interpolates between two palettes.
+  static ColorPalette? lerp(ColorPalette? begin, ColorPalette? end, double t) {
+    if (identical(begin, end)) return begin;
+    if (begin == null || end == null) return t < 0.5 ? begin : end;
+    return ColorPalette._(
+      .unmodifiable(.generate(256, (i) => Color.lerp(begin[i], end[i], t)!)),
+    );
+  }
+
+  static RgbColor _colorToRgb(Color color) => RgbColor(
+    (color.r * 255.0).round().clamp(0, 255),
+    (color.g * 255.0).round().clamp(0, 255),
+    (color.b * 255.0).round().clamp(0, 255),
   );
 
   static Color _rgbToColor(RgbColor rgb) => .fromARGB(255, rgb.r, rgb.g, rgb.b);

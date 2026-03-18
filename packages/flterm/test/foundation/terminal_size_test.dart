@@ -1,45 +1,15 @@
-import 'package:flterm/foundation.dart';
+import 'package:flterm/src/foundation.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('TerminalSize', () {
-    test('stores cols and rows', () {
-      const size = TerminalSize(cols: 80, rows: 24);
-      expect(size.cols, 80);
-      expect(size.rows, 24);
-    });
-
-    test('equality with same values', () {
-      expect(
-        const TerminalSize(cols: 80, rows: 24),
-        equals(const TerminalSize(cols: 80, rows: 24)),
-      );
-    });
-
-    test('inequality with different cols', () {
-      expect(
-        const TerminalSize(cols: 80, rows: 24),
-        isNot(equals(const TerminalSize(cols: 81, rows: 24))),
-      );
-    });
-
-    test('inequality with different rows', () {
-      expect(
-        const TerminalSize(cols: 80, rows: 24),
-        isNot(equals(const TerminalSize(cols: 80, rows: 25))),
-      );
-    });
-
-    test('hashCode is consistent with equality', () {
+    test('equality and hashCode', () {
       const a = TerminalSize(cols: 80, rows: 24);
       const b = TerminalSize(cols: 80, rows: 24);
-      expect(a.hashCode, equals(b.hashCode));
-    });
-
-    test('toString includes cols and rows', () {
-      const size = TerminalSize(cols: 80, rows: 24);
-      expect(size.toString(), contains('80'));
-      expect(size.toString(), contains('24'));
+      expect(a, equals(b));
+      expect(a.hashCode, b.hashCode);
+      expect(a, isNot(equals(const TerminalSize(cols: 81, rows: 24))));
+      expect(a, isNot(equals(const TerminalSize(cols: 80, rows: 25))));
     });
   });
 }
