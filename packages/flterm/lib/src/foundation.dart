@@ -1,6 +1,3 @@
-/// Internal barrel for foundation types.
-library;
-
 export 'foundation/cell_metrics.dart';
 export 'foundation/color_palette.dart';
 export 'foundation/mouse_encoding.dart';

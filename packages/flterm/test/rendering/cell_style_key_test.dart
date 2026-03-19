@@ -1,4 +1,4 @@
-import 'package:flterm/src/rendering/cell_style_key.dart';
+import 'package:flterm/src/rendering.dart';
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart';
@@ -27,28 +27,32 @@ void main() {
     );
   }
 
-  group('CellStyleKey equality', () {
-    test('same attributes produce equal keys', () {
+  group('CellStyleKey', () {
+    test('equality and hashCode', () {
       expect(base(), equals(base()));
+      expect(base().hashCode, base().hashCode);
     });
 
-    test('same keys have same hashCode', () {
-      expect(base().hashCode, equals(base().hashCode));
-    });
+    test('each field contributes to identity', () {
+      final plain = base();
+      expect(plain, isNot(equals(base(bold: true))));
+      expect(plain, isNot(equals(base(italic: true))));
+      expect(plain, isNot(equals(base(faint: true))));
+      expect(plain, isNot(equals(base(strikethrough: true))));
+      expect(plain, isNot(equals(base(overline: true))));
+      expect(plain, isNot(equals(base(underline: UnderlineStyle.single))));
+      expect(
+        base(underline: UnderlineStyle.single),
+        isNot(
+          equals(
+            base(
+              underline: UnderlineStyle.single,
+              underlineColor: const Color(0xFFFF0000),
+            ),
+          ),
+        ),
+      );
 
-    test('different bold produces different key', () {
-      expect(base(), isNot(equals(base(bold: true))));
-    });
-
-    test('different italic produces different key', () {
-      expect(base(), isNot(equals(base(italic: true))));
-    });
-
-    test('different faint produces different key', () {
-      expect(base(), isNot(equals(base(faint: true))));
-    });
-
-    test('different foreground produces different key', () {
       const a = CellStyleKey(
         bold: false,
         italic: false,
@@ -69,105 +73,69 @@ void main() {
       );
       expect(a, isNot(equals(b)));
     });
-
-    test('different underline style produces different key', () {
-      expect(
-        base(underline: UnderlineStyle.single),
-        isNot(equals(base(underline: UnderlineStyle.doubleLine))),
-      );
-    });
-
-    test('different underlineColor produces different key', () {
-      expect(
-        base(
-          underline: UnderlineStyle.single,
-          underlineColor: const Color(0xFFFF0000),
-        ),
-        isNot(equals(base(underline: UnderlineStyle.single))),
-      );
-    });
-
-    test('different strikethrough produces different key', () {
-      expect(base(), isNot(equals(base(strikethrough: true))));
-    });
-
-    test('different overline produces different key', () {
-      expect(base(), isNot(equals(base(overline: true))));
-    });
   });
 
   group('CellStyleKey.buildTextStyle', () {
     const fontFamily = 'monospace';
     const fontSize = 14.0;
+    const fallback = ['Menlo', 'Consolas'];
 
-    test('plain style has normal weight and upright style', () {
-      final ts = base().buildTextStyle(fontFamily, fontSize);
+    test('plain key produces default style', () {
+      final ts = base().buildTextStyle(fontFamily, fontSize, fallback);
       expect(ts.fontWeight, FontWeight.normal);
       expect(ts.fontStyle, FontStyle.normal);
+      expect(ts.decoration, TextDecoration.none);
+      expect(ts.color, fg);
+      expect(ts.fontFamily, fontFamily);
+      expect(ts.fontSize, fontSize);
     });
 
     test('bold sets FontWeight.bold', () {
-      final ts = base(bold: true).buildTextStyle(fontFamily, fontSize);
+      final ts = base(
+        bold: true,
+      ).buildTextStyle(fontFamily, fontSize, fallback);
       expect(ts.fontWeight, FontWeight.bold);
     });
 
     test('italic sets FontStyle.italic', () {
-      final ts = base(italic: true).buildTextStyle(fontFamily, fontSize);
+      final ts = base(
+        italic: true,
+      ).buildTextStyle(fontFamily, fontSize, fallback);
       expect(ts.fontStyle, FontStyle.italic);
     });
 
-    test('no decoration when all flags are false', () {
-      final ts = base().buildTextStyle(fontFamily, fontSize);
-      expect(ts.decoration, TextDecoration.none);
-    });
-
-    test('single underline maps to solid', () {
-      final ts = base(
-        underline: UnderlineStyle.single,
-      ).buildTextStyle(fontFamily, fontSize);
-      expect(ts.decoration, containsDecoration(TextDecoration.underline));
-      expect(ts.decorationStyle, TextDecorationStyle.solid);
-    });
-
-    test('double underline maps to double', () {
-      final ts = base(
-        underline: UnderlineStyle.doubleLine,
-      ).buildTextStyle(fontFamily, fontSize);
-      expect(ts.decoration, containsDecoration(TextDecoration.underline));
-      expect(ts.decorationStyle, TextDecorationStyle.double);
-    });
-
-    test('curly underline maps to wavy', () {
-      final ts = base(
-        underline: UnderlineStyle.curly,
-      ).buildTextStyle(fontFamily, fontSize);
-      expect(ts.decoration, containsDecoration(TextDecoration.underline));
-      expect(ts.decorationStyle, TextDecorationStyle.wavy);
-    });
-
-    test('dotted underline maps to dotted', () {
-      final ts = base(
-        underline: UnderlineStyle.dotted,
-      ).buildTextStyle(fontFamily, fontSize);
-      expect(ts.decoration, containsDecoration(TextDecoration.underline));
-      expect(ts.decorationStyle, TextDecorationStyle.dotted);
-    });
-
-    test('dashed underline maps to dashed', () {
-      final ts = base(
-        underline: UnderlineStyle.dashed,
-      ).buildTextStyle(fontFamily, fontSize);
-      expect(ts.decoration, containsDecoration(TextDecoration.underline));
-      expect(ts.decorationStyle, TextDecorationStyle.dashed);
+    test('underline styles map to correct decoration styles', () {
+      const mapping = {
+        UnderlineStyle.single: TextDecorationStyle.solid,
+        UnderlineStyle.doubleLine: TextDecorationStyle.double,
+        UnderlineStyle.curly: TextDecorationStyle.wavy,
+        UnderlineStyle.dotted: TextDecorationStyle.dotted,
+        UnderlineStyle.dashed: TextDecorationStyle.dashed,
+      };
+      for (final MapEntry(:key, :value) in mapping.entries) {
+        final ts = base(
+          underline: key,
+        ).buildTextStyle(fontFamily, fontSize, fallback);
+        expect(
+          ts.decoration,
+          containsDecoration(TextDecoration.underline),
+          reason: '$key',
+        );
+        expect(ts.decorationStyle, value, reason: '$key');
+      }
     });
 
     test('strikethrough sets lineThrough', () {
-      final ts = base(strikethrough: true).buildTextStyle(fontFamily, fontSize);
+      final ts = base(
+        strikethrough: true,
+      ).buildTextStyle(fontFamily, fontSize, fallback);
       expect(ts.decoration, containsDecoration(TextDecoration.lineThrough));
     });
 
     test('overline sets overline', () {
-      final ts = base(overline: true).buildTextStyle(fontFamily, fontSize);
+      final ts = base(
+        overline: true,
+      ).buildTextStyle(fontFamily, fontSize, fallback);
       expect(ts.decoration, containsDecoration(TextDecoration.overline));
     });
 
@@ -175,7 +143,7 @@ void main() {
       final ts = base(
         underline: UnderlineStyle.single,
         strikethrough: true,
-      ).buildTextStyle(fontFamily, fontSize);
+      ).buildTextStyle(fontFamily, fontSize, fallback);
       expect(ts.decoration, containsDecoration(TextDecoration.underline));
       expect(ts.decoration, containsDecoration(TextDecoration.lineThrough));
     });
@@ -184,56 +152,12 @@ void main() {
       final ts = base(
         underline: UnderlineStyle.single,
         underlineColor: const Color(0xFFFF0000),
-      ).buildTextStyle(fontFamily, fontSize);
+      ).buildTextStyle(fontFamily, fontSize, fallback);
       expect(ts.decorationColor, const Color(0xFFFF0000));
     });
-
-    test('foreground color is applied', () {
-      final ts = base().buildTextStyle(fontFamily, fontSize);
-      expect(ts.color, fg);
-    });
-
-    test('fontFamily and fontSize are applied', () {
-      final ts = base().buildTextStyle(fontFamily, fontSize);
-      expect(ts.fontFamily, fontFamily);
-      expect(ts.fontSize, fontSize);
-    });
-  });
-
-  group('containsDecoration matcher', () {
-    test('none does not contain underline', () {
-      expect(
-        TextDecoration.none,
-        isNot(containsDecoration(TextDecoration.underline)),
-      );
-    });
-
-    test('underline contains underline', () {
-      expect(
-        TextDecoration.underline,
-        containsDecoration(TextDecoration.underline),
-      );
-    });
   });
 }
 
-Matcher containsDecoration(TextDecoration decoration) {
-  return _ContainsDecoration(decoration);
-}
-
-final class _ContainsDecoration extends Matcher {
-  final TextDecoration _decoration;
-
-  const _ContainsDecoration(this._decoration);
-
-  @override
-  Description describe(Description description) {
-    return description.add('TextDecoration containing $_decoration');
-  }
-
-  @override
-  bool matches(Object? item, Map<Object?, Object?> matchState) {
-    if (item is! TextDecoration) return false;
-    return item.contains(_decoration);
-  }
+Matcher containsDecoration(TextDecoration d) {
+  return predicate<TextDecoration>((v) => v.contains(d), 'contains $d');
 }

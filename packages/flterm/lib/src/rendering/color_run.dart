@@ -1,6 +1,8 @@
 import 'package:flutter/painting.dart';
+import 'package:meta/meta.dart';
 
 /// A horizontal run of cells sharing the same background color.
+@immutable
 final class ColorRun {
   /// Inclusive start column.
   final int startCol;

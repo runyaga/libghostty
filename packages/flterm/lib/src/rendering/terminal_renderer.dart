@@ -1,80 +1,28 @@
 import 'dart:async';
-import 'dart:ui' as ui;
 
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:libghostty/libghostty.dart';
 
-import '../../foundation.dart';
-import 'cell_style_key.dart';
-import 'color_run.dart';
-import 'selection.dart';
+import '../foundation.dart';
+import 'cell_text.dart';
+import 'content_cache.dart';
+import 'content_layer.dart';
+import 'cursor_layer.dart';
+import 'selection_layer.dart';
+import 'style_resolver.dart';
+import 'terminal_paint_context.dart';
 
-/// Per row data built during the update phase and consumed by paint.
-///
-/// All four lists share the same length and are always resized, invalidated,
-/// and queried together.
-class _RowCaches {
-  List<bool> dirty;
-  List<Line> lines;
-  List<List<ColorRun>> bgRuns;
-  List<ui.Paragraph?> paragraphs;
-
-  _RowCaches()
-    : dirty = const [],
-      lines = const [],
-      bgRuns = const [],
-      paragraphs = const [];
-
-  void detectDirtyFrom(Screen screen, int rows) {
-    final limit = rows < screen.rows ? rows : screen.rows;
-    for (var row = 0; row < limit; row++) {
-      final newLine = screen.lineAt(row);
-      if (newLine != lines[row]) {
-        dirty[row] = true;
-        lines[row] = newLine;
-      }
-    }
-  }
-
-  void dispose() {
-    for (final paragraph in paragraphs) {
-      paragraph?.dispose();
-    }
-  }
-
-  void markAllDirty() => dirty.fillRange(0, dirty.length, true);
-
-  void markBlinkingRowsDirty(int rows) {
-    for (var row = 0; row < rows; row++) {
-      for (final cell in lines[row].cells) {
-        if (cell.style.blink) {
-          dirty[row] = true;
-          break;
-        }
-      }
-    }
-  }
-
-  void resize(int rows) {
-    dispose();
-    paragraphs = List<ui.Paragraph?>.filled(rows, null);
-    bgRuns = List<List<ColorRun>>.generate(rows, (_) => []);
-    dirty = List<bool>.filled(rows, true);
-    lines = List<Line>.generate(rows, (_) => const Line([]));
-  }
-}
-
-/// Renders a terminal screen with full visual fidelity.
-///
-/// Paints cell backgrounds, styled text, cursors, and selection overlays
-/// using a two-phase update/paint pipeline.
+/// Renders a terminal screen with cell backgrounds, styled text, cursors,
+/// and selection overlays.
 ///
 /// ```dart
 /// TerminalRenderer(
 ///   terminal: myTerminal,
-///   theme: TerminalTheme.defaults,
-///   metrics: CellMetrics.measure(fontFamily: 'monospace', fontSize: 14),
+///   theme: TerminalTheme.dark(),
+///   metrics: measureCellMetrics(fontFamily: 'monospace', fontSize: 14),
+///   offset: ViewportOffset.zero(),
+///   renderState: controller,
 /// )
 /// ```
 class TerminalRenderer extends LeafRenderObjectWidget {
@@ -87,15 +35,41 @@ class TerminalRenderer extends LeafRenderObjectWidget {
   /// Cell pixel dimensions.
   final CellMetrics metrics;
 
-  /// Optional selected cell range painted as a semi-transparent overlay.
-  final TerminalSelection? selection;
+  /// Scroll offset provided by a [Scrollable] ancestor.
+  ///
+  /// At `pixels == 0`, the oldest scrollback row is visible.
+  /// At `pixels == maxScrollExtent`, the live screen is visible.
+  final ViewportOffset offset;
+
+  /// Observable state for selection and focus.
+  final TerminalRenderState? renderState;
+
+  /// Whether the cursor blink is currently in the visible phase.
+  ///
+  /// When false, the cursor and blinking text are hidden.
+  final bool blinkVisible;
+
+  /// Called when the terminal grid dimensions change during layout.
+  final ValueChanged<TerminalSize>? onResize;
+
+  /// Called for mode changes, mouse shape changes, terminal responses,
+  /// and cursor changes.
+  final ValueChanged<TerminalEvent>? onEvent;
+
+  /// URI of the hyperlink currently highlighted by Cmd+hover, or null.
+  final String? highlightedHyperlink;
 
   const TerminalRenderer({
     super.key,
     required this.terminal,
     required this.theme,
     required this.metrics,
-    this.selection,
+    required this.offset,
+    this.renderState,
+    this.blinkVisible = true,
+    this.onResize,
+    this.onEvent,
+    this.highlightedHyperlink,
   });
 
   @override
@@ -104,7 +78,12 @@ class TerminalRenderer extends LeafRenderObjectWidget {
       terminal: terminal,
       theme: theme,
       metrics: metrics,
-      selection: selection,
+      offset: offset,
+      renderState: renderState,
+      blinkVisible: blinkVisible,
+      onResize: onResize,
+      onEvent: onEvent,
+      highlightedHyperlink: highlightedHyperlink,
     );
   }
 
@@ -115,7 +94,20 @@ class TerminalRenderer extends LeafRenderObjectWidget {
       ..add(DiagnosticsProperty<Terminal>('terminal', terminal))
       ..add(DiagnosticsProperty<TerminalTheme>('theme', theme))
       ..add(DiagnosticsProperty<CellMetrics>('metrics', metrics))
-      ..add(DiagnosticsProperty<TerminalSelection?>('selection', selection));
+      ..add(
+        DiagnosticsProperty<TerminalSelection?>(
+          'selection',
+          renderState?.selection,
+        ),
+      )
+      ..add(DiagnosticsProperty<ViewportOffset>('offset', offset))
+      ..add(
+        FlagProperty(
+          'blinkVisible',
+          value: blinkVisible,
+          ifTrue: 'blink visible',
+        ),
+      );
   }
 
   @override
@@ -126,26 +118,151 @@ class TerminalRenderer extends LeafRenderObjectWidget {
     renderObject
       ..terminal = terminal
       ..theme = theme
+      ..offset = offset
       ..metrics = metrics
-      ..selection = selection;
+      ..onResize = onResize
+      ..onEvent = onEvent
+      ..renderState = renderState
+      ..blinkVisible = blinkVisible
+      ..highlightedHyperlink = highlightedHyperlink;
   }
 }
 
+class _ScrollState {
+  var stickToBottom = true;
+  var lastScrollbackLength = 0;
+  var rowOffset = 0;
+}
+
 class TerminalRenderBox extends RenderBox {
+  Terminal _terminal;
+  TerminalTheme _theme;
+  CellMetrics _metrics;
+  ViewportOffset _offset;
+  TerminalRenderState? _renderState;
+  ValueChanged<TerminalSize>? _onResize;
+  ValueChanged<TerminalEvent>? _onEvent;
+  String? _highlightedHyperlink;
+
+  var _performingLayout = false;
+  var _needsTerminalSync = false;
+
+  final _scroll = _ScrollState();
+
+  late final TerminalPaintContext _ctx;
+  late final ContentCache _contentCache;
+  late final ContentLayer _contentLayer;
+  late final CursorLayer _cursorLayer;
+  late final SelectionLayer _selectionLayer;
+
+  late final _lineResolverFn = _lineResolver;
+
+  final _backgroundPaint = Paint();
+
+  StreamSubscription<TerminalEvent>? _eventSub;
+
   TerminalRenderBox({
     required Terminal terminal,
     required TerminalTheme theme,
     required CellMetrics metrics,
-    TerminalSelection? selection,
+    required ViewportOffset offset,
+    TerminalRenderState? renderState,
+    bool blinkVisible = true,
+    ValueChanged<TerminalSize>? onResize,
+    ValueChanged<TerminalEvent>? onEvent,
+    String? highlightedHyperlink,
   }) : _terminal = terminal,
        _theme = theme,
+       _offset = offset,
        _metrics = metrics,
-       _selection = selection {
+       _onResize = onResize,
+       _onEvent = onEvent,
+       _renderState = renderState,
+       _highlightedHyperlink = highlightedHyperlink {
+    final styles = StyleResolver(theme);
+    _ctx =
+        TerminalPaintContext(
+            styles,
+            metrics,
+            selectionColor: theme.selectionColor,
+          )
+          ..blinkVisible = blinkVisible
+          ..cursor.focused = renderState?.hasFocus ?? true
+          ..selection = renderState?.selection;
+    _contentCache = ContentCache(_ctx);
+    _contentLayer = ContentLayer(_ctx, _contentCache);
+    _cursorLayer = CursorLayer(_ctx);
+    _selectionLayer = SelectionLayer(_ctx);
     _backgroundPaint.color = theme.background;
-    _selectionPaint
-      ..color = const Color(0x3D7AA2F7)
-      ..style = PaintingStyle.fill;
   }
+
+  bool get blinkVisible => _ctx.blinkVisible;
+
+  set blinkVisible(bool value) {
+    if (_ctx.blinkVisible == value) return;
+    _ctx.blinkVisible = value;
+    _contentCache.markBlinkingDirty();
+    if (_ctx.rows > 0) _contentCache.rebuildDirty(_lineResolverFn);
+    markNeedsPaint();
+  }
+
+  set highlightedHyperlink(String? value) {
+    if (_highlightedHyperlink == value) return;
+    _highlightedHyperlink = value;
+    _contentCache.highlightedHyperlink = value;
+    if (_ctx.rows > 0) _contentCache.rebuildDirty(_lineResolverFn);
+    markNeedsPaint();
+  }
+
+  @override
+  bool get isRepaintBoundary => true;
+
+  CellMetrics get metrics => _metrics;
+
+  set metrics(CellMetrics value) {
+    if (_metrics == value) return;
+    _metrics = value;
+    _ctx.metrics = value;
+    _contentCache.markAllDirty();
+    _ctx.cursor.invalidateGlyph();
+    markNeedsLayout();
+  }
+
+  ViewportOffset get offset => _offset;
+
+  set offset(ViewportOffset value) {
+    if (_offset == value) return;
+    if (attached) _offset.removeListener(_onScroll);
+    _offset = value;
+    if (attached) _offset.addListener(_onScroll);
+    markNeedsLayout();
+  }
+
+  ValueChanged<TerminalEvent>? get onEvent => _onEvent;
+
+  set onEvent(ValueChanged<TerminalEvent>? value) {
+    if (_onEvent == value) return;
+    _onEvent = value;
+  }
+
+  ValueChanged<TerminalSize>? get onResize => _onResize;
+
+  set onResize(ValueChanged<TerminalSize>? value) {
+    if (_onResize == value) return;
+    _onResize = value;
+  }
+
+  TerminalRenderState? get renderState => _renderState;
+
+  set renderState(TerminalRenderState? value) {
+    if (_renderState == value) return;
+    if (attached) _renderState?.removeListener(_onRenderStateChanged);
+    _renderState = value;
+    if (attached) _renderState?.addListener(_onRenderStateChanged);
+    _onRenderStateChanged();
+  }
+
+  TerminalSelection? get selection => _ctx.selection;
 
   Terminal get terminal => _terminal;
 
@@ -154,7 +271,7 @@ class TerminalRenderBox extends RenderBox {
     _eventSub?.cancel().ignore();
     _terminal = value;
     _setupSubscriptions();
-    _cache.markAllDirty();
+    _contentCache.markAllDirty();
     markNeedsLayout();
   }
 
@@ -162,441 +279,258 @@ class TerminalRenderBox extends RenderBox {
 
   set theme(TerminalTheme value) {
     if (_theme == value) return;
-    final oldBlinkInterval = _theme.cursor.blinkInterval;
     _theme = value;
-    _styleCache.clear();
+    _ctx.styles = StyleResolver(value);
+    _ctx.selectionColor = value.selectionColor;
+    _contentCache.markAllDirty();
+    _ctx.cursor.invalidateGlyph();
     _backgroundPaint.color = value.background;
-    _cache.markAllDirty();
-    if (value.cursor.blinkInterval != oldBlinkInterval) {
-      _setupBlinkTimer();
-    }
     markNeedsLayout();
   }
 
-  CellMetrics get metrics => _metrics;
-
-  set metrics(CellMetrics value) {
-    if (_metrics == value) return;
-    _metrics = value;
-    _cache.markAllDirty();
-    markNeedsLayout();
+  Line? get _cursorLine {
+    if (_scroll.rowOffset > 0) return null;
+    final row = _terminal.cursor.row;
+    if (row < 0 || row >= _ctx.rows) return null;
+    return _terminal.screen.lineAt(row);
   }
 
-  TerminalSelection? get selection => _selection;
-
-  set selection(TerminalSelection? value) {
-    if (_selection == value) return;
-    _selection = value;
-    markNeedsPaint();
-  }
-
-  @override
-  bool get isRepaintBoundary => true;
-
-  @override
-  bool get sizedByParent => false;
-
-  @override
-  bool hitTestSelf(Offset position) => true;
-
-  Terminal _terminal;
-  TerminalTheme _theme;
-  CellMetrics _metrics;
-  TerminalSelection? _selection;
-
-  var _cols = 0;
-  var _rows = 0;
-
-  final _cache = _RowCaches();
-  final Map<CellStyleKey, TextStyle> _styleCache = {};
-
-  Timer? _blinkTimer;
-  var _blinkVisible = true;
-
-  final _backgroundPaint = Paint()..style = PaintingStyle.fill;
-  final _bgRunPaint = Paint()..style = PaintingStyle.fill;
-  final _cursorPaint = Paint();
-  final _selectionPaint = Paint();
-
-  StreamSubscription<TerminalEvent>? _eventSub;
+  double get _scrollMaxExtent =>
+      _terminal.scrollback.length * _metrics.cellHeight;
 
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
+    _offset.addListener(_onScroll);
+    _renderState?.addListener(_onRenderStateChanged);
     _setupSubscriptions();
-    _setupBlinkTimer();
+    markNeedsLayout();
   }
 
   @override
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties
-      ..add(IntProperty('cols', _cols))
-      ..add(IntProperty('rows', _rows))
+      ..add(IntProperty('cols', _ctx.cols))
+      ..add(IntProperty('rows', _ctx.rows))
       ..add(DiagnosticsProperty<TerminalTheme>('theme', _theme))
       ..add(DiagnosticsProperty<CellMetrics>('metrics', _metrics))
-      ..add(DiagnosticsProperty<TerminalSelection?>('selection', _selection))
+      ..add(
+        DiagnosticsProperty<TerminalSelection?>('selection', _ctx.selection),
+      )
       ..add(
         FlagProperty(
           'blinkVisible',
-          value: _blinkVisible,
+          value: blinkVisible,
           ifTrue: 'cursor visible',
         ),
+      )
+      ..add(
+        FlagProperty('focused', value: _ctx.cursor.focused, ifTrue: 'focused'),
+      )
+      ..add(
+        DiagnosticsProperty<TerminalRenderState?>('renderState', _renderState),
       );
   }
 
   @override
   void detach() {
+    _offset.removeListener(_onScroll);
+    _renderState?.removeListener(_onRenderStateChanged);
     _eventSub?.cancel().ignore();
-    _blinkTimer?.cancel();
-    _cache.dispose();
+    _contentCache.dispose();
+    _ctx.cursor.dispose();
+    _ctx.rows = 0;
+    _ctx.cols = 0;
     super.detach();
   }
 
   @override
+  bool hitTestSelf(Offset position) => true;
+
+  @override
   void paint(PaintingContext context, Offset offset) {
+    _syncTerminalState();
+
     final canvas = context.canvas;
-
     canvas.drawRect(offset & size, _backgroundPaint);
-    _paintCellBackgrounds(canvas, offset);
-
-    final cursor = _terminal.cursor;
-
-    // Block cursor paints before text so glyphs render on top.
-    if (_shouldDrawCursor(cursor) && cursor.shape == CursorShape.block) {
-      _paintBlockCursor(canvas, offset, cursor);
-    }
-
-    for (var row = 0; row < _rows; row++) {
-      final paragraph = _cache.paragraphs[row];
-      if (paragraph != null) {
-        canvas.drawParagraph(
-          paragraph,
-          Offset(offset.dx, offset.dy + row * _metrics.cellHeight),
-        );
-      }
-    }
-
-    // Non-block cursors paint after text so they overlay.
-    if (_shouldDrawCursor(cursor) && cursor.shape != CursorShape.block) {
-      _paintNonBlockCursor(canvas, offset, cursor);
-    }
-
-    if (_selection != null) _paintSelection(canvas, offset);
+    _contentLayer.paint(canvas, offset);
+    _cursorLayer.paint(canvas, offset);
+    _selectionLayer.paint(canvas, offset);
   }
 
   @override
   void performLayout() {
+    _performingLayout = true;
+
     final maxW = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
     final maxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 0.0;
-    final newCols = _metrics.cellWidth > 0
-        ? (maxW / _metrics.cellWidth).floor()
-        : 0;
-    final newRows = _metrics.cellHeight > 0
-        ? (maxH / _metrics.cellHeight).floor()
-        : 0;
+    final (newCols, newRows) = _metrics.gridSize(maxW, maxH);
 
     size = constraints.constrain(
       Size(newCols * _metrics.cellWidth, newRows * _metrics.cellHeight),
     );
 
-    if (newCols != _cols || newRows != _rows) {
-      _cols = newCols;
-      _rows = newRows;
-      _cache.resize(_rows);
+    if (newCols != _ctx.cols || newRows != _ctx.rows) {
+      _ctx.cols = newCols;
+      _ctx.rows = newRows;
+      _contentCache.updateGridSize();
+      if (newCols > 0 && newRows > 0) {
+        _terminal.resize(cols: newCols, rows: newRows);
+        _onResize?.call(TerminalSize(cols: newCols, rows: newRows));
+      }
     }
 
-    if (_rows > 0) _rebuildDirtyRows();
+    _syncScrollLayout();
+    _ctx.cursor.scrolling = _scroll.rowOffset > 0;
+
+    if (_ctx.rows > 0) {
+      _syncTerminalState();
+      _updateCursor(_terminal.cursor, _cursorLine);
+      _contentCache.rebuildDirty(_lineResolverFn);
+    }
+
+    markNeedsPaint();
+    _performingLayout = false;
   }
 
-  void _onTerminalChanged() {
-    if (_rows == 0) return;
-    _cache.detectDirtyFrom(_terminal.screen, _rows);
-    _rebuildDirtyRows();
+  int _computeScrollRowOffset() {
+    final scrollbackLen = _terminal.scrollback.length;
+    if (scrollbackLen == 0 || _metrics.cellHeight <= 0) return 0;
+    final maxExtent = _scrollMaxExtent;
+    if (maxExtent <= 0) return 0;
+    final pixels = _offset.pixels.clamp(0.0, maxExtent);
+    return scrollbackLen - (pixels / _metrics.cellHeight).floor();
+  }
+
+  bool _isCursorUnchanged(Cursor cursor, String content, {required bool wide}) {
+    final cur = _ctx.cursor;
+    return cursor.row == cur.row &&
+        cursor.col == cur.col &&
+        cursor.shape == cur.shape &&
+        cursor.visible == cur.visible &&
+        wide == cur.wide &&
+        content == cur.cellContent &&
+        cur.glyph != null;
+  }
+
+  Line _lineResolver(int row) {
+    return _scroll.rowOffset > 0
+        ? _scrollLineAt(row)
+        : _terminal.screen.lineAt(row);
+  }
+
+  void _onRenderStateChanged() {
+    var needsPaint = false;
+
+    final newSelection = _renderState?.selection;
+    if (newSelection != _ctx.selection) {
+      _ctx.selection = newSelection;
+      needsPaint = true;
+    }
+
+    final newFocused = _renderState?.hasFocus ?? true;
+    if (newFocused != _ctx.cursor.focused) {
+      _ctx.cursor.focused = newFocused;
+      _ctx.cursor.invalidateGlyph();
+      _needsTerminalSync = true;
+      needsPaint = true;
+    }
+
+    if (needsPaint) markNeedsPaint();
+  }
+
+  void _onScroll() {
+    if (_ctx.rows == 0) return;
+    final delta = _processScroll();
+    _ctx.cursor.scrolling = _scroll.rowOffset > 0;
+    _ctx.scrollbackLength = _scroll.lastScrollbackLength;
+    _ctx.rowOffset = _scroll.rowOffset;
+
+    if (delta == 0) {
+      markNeedsPaint();
+      return;
+    }
+
+    _contentCache.scroll(delta);
+    _updateCursor(_terminal.cursor, _cursorLine);
+    _contentCache.rebuildDirty(_lineResolverFn);
     markNeedsPaint();
   }
 
-  void _rebuildDirtyRows() {
-    final screen = _terminal.screen;
-    for (var row = 0; row < _rows; row++) {
-      if (!_cache.dirty[row]) continue;
-      _rebuildRow(row, screen);
-      _cache.dirty[row] = false;
-    }
-  }
+  void _onTerminalChanged() {
+    if (_ctx.rows == 0) return;
+    _needsTerminalSync = true;
 
-  void _rebuildRow(int row, Screen screen) {
-    _cache.paragraphs[row]?.dispose();
-    final bgRunList = _cache.bgRuns[row]..clear();
-    final rowWidth = _cols * _metrics.cellWidth;
-
-    final paragraphStyle = ui.ParagraphStyle(
-      fontFamily: _theme.fontFamily,
-      fontSize: _theme.fontSize,
-    );
-    final builder = ui.ParagraphBuilder(paragraphStyle);
-
-    final termBg = _theme.background;
-    var bgRunStart = 0;
-    var bgRunColor = termBg;
-    var bgRunStarted = false;
-
-    final screenRows = screen.rows;
-    final screenCols = screen.cols;
-
-    for (var col = 0; col < _cols; col++) {
-      final cell = row < screenRows && col < screenCols
-          ? screen.cellAt(row, col)
-          : Cell.empty;
-      final (foreground, background) = _resolveColors(cell);
-
-      if (!bgRunStarted) {
-        bgRunColor = background;
-        bgRunStart = col;
-        bgRunStarted = true;
-      } else if (background != bgRunColor) {
-        if (bgRunColor != termBg) {
-          bgRunList.add(ColorRun(bgRunStart, col, bgRunColor));
-        }
-        bgRunColor = background;
-        bgRunStart = col;
-      }
-
-      final content = cell.content;
-      final isEmpty = content.isEmpty;
-
-      if (!isEmpty) {
-        final text = _cellText(cell);
-        final style = _resolveTextStyle(cell, foreground, background);
-        builder.pushStyle(style.getTextStyle());
-        builder.addText(text);
-        builder.pop();
-        if (cell.isWide) {
-          col++;
-          if (bgRunColor != termBg) {
-            bgRunList.add(ColorRun(bgRunStart, col + 1, bgRunColor));
-          }
-          bgRunStart = col + 1;
-          bgRunColor = termBg;
-          bgRunStarted = col + 1 < _cols;
-        }
-      } else {
-        final style = _resolveTextStyle(cell, foreground, background);
-        builder.pushStyle(style.getTextStyle());
-        builder.addText(' ');
-        builder.pop();
+    final scrollbackLen = _terminal.scrollback.length;
+    if (scrollbackLen != _scroll.lastScrollbackLength) {
+      _scroll.lastScrollbackLength = scrollbackLen;
+      _contentCache.markAllDirty();
+      if (!_performingLayout) {
+        markNeedsLayout();
+        return;
       }
     }
 
-    if (bgRunStarted && bgRunColor != termBg) {
-      bgRunList.add(ColorRun(bgRunStart, _cols, bgRunColor));
-    }
-
-    _cache.paragraphs[row] = builder.build()
-      ..layout(ui.ParagraphConstraints(width: rowWidth));
+    if (!_performingLayout) markNeedsPaint();
   }
 
-  (Color, Color) _resolveColors(Cell cell) {
-    var fg = _theme.resolveColor(cell.foreground, isForeground: true);
-    var bg = _theme.resolveColor(cell.background, isForeground: false);
-    if (cell.style.inverse) {
-      final tmp = fg;
-      fg = bg;
-      bg = tmp;
-    }
-    if (cell.style.faint) {
-      fg = fg.withValues(alpha: fg.a * 0.5);
-    }
-    return (fg, bg);
+  int _processScroll() {
+    final maxExtent = _scrollMaxExtent;
+    _scroll.stickToBottom = maxExtent <= 0 || _offset.pixels >= maxExtent - 1.0;
+    final newRow = _computeScrollRowOffset();
+    final delta = newRow - _scroll.rowOffset;
+    _scroll.rowOffset = newRow;
+    return delta;
   }
 
-  TextStyle _resolveTextStyle(Cell cell, Color fg, Color bg) {
-    final underlineColor = cell.underlineColor != null
-        ? _theme.resolveColor(cell.underlineColor!, isForeground: true)
-        : null;
+  void _rebuildCursorGlyph(Cell? cell, String content) {
+    final cur = _ctx.cursor;
+    cur.invalidateGlyph();
 
-    final key = CellStyleKey(
-      bold: cell.style.bold,
-      italic: cell.style.italic,
-      faint: cell.style.faint,
-      strikethrough: cell.style.strikethrough,
-      overline: cell.style.overline,
-      foreground: fg,
-      underline: cell.style.underline,
-      underlineColor: underlineColor,
+    if (cur.scrolling || !cur.focused) return;
+    if (cur.shape != CursorShape.block) return;
+    if (content == ' ' || cell == null) return;
+    if (cur.row < 0 || cur.row >= _ctx.rows) return;
+    if (cur.col < 0 || cur.col >= _ctx.cols) return;
+
+    final colors = _ctx.styles.resolveColors(cell);
+    final (paragraph, offset) = buildGlyphParagraph(
+      _ctx.styles,
+      _ctx.metrics,
+      cell,
+      content,
+      colors.$2,
+      wide: cell.isWide,
     );
-
-    return _styleCache.putIfAbsent(
-      key,
-      () => key.buildTextStyle(_theme.fontFamily, _theme.fontSize),
-    );
+    cur.glyph = paragraph;
+    cur.glyphOffset = offset;
   }
 
-  String _cellText(Cell cell) {
-    if (cell.content.isEmpty) return ' ';
-    if (cell.style.invisible) return ' ';
-    if (cell.style.blink && !_blinkVisible) return ' ';
-    return cell.content;
+  Cell? _resolveCursorCell(Cursor cursor, Line? cursorLine) {
+    if (cursorLine == null) return null;
+    if (!cursor.visible) return null;
+    if (cursor.row < 0 || cursor.row >= _ctx.rows) return null;
+    if (cursor.col < 0 || cursor.col >= _ctx.cols) return null;
+
+    final cell = cursorLine.cellAt(cursor.col);
+    _ctx.cursor.color =
+        _ctx.styles.theme.cursor.color ??
+        _ctx.styles.theme.resolveColor(cell.foreground, isForeground: true);
+    return cell;
   }
 
-  void _paintCellBackgrounds(Canvas canvas, Offset offset) {
-    for (var row = 0; row < _rows; row++) {
-      for (final run in _cache.bgRuns[row]) {
-        _bgRunPaint.color = run.color;
-        canvas.drawRect(
-          Rect.fromLTWH(
-            offset.dx + run.startCol * _metrics.cellWidth,
-            offset.dy + row * _metrics.cellHeight,
-            (run.endCol - run.startCol) * _metrics.cellWidth,
-            _metrics.cellHeight,
-          ),
-          _bgRunPaint,
-        );
-      }
+  Line _scrollLineAt(int viewportRow) {
+    final scrollbackLen = _terminal.scrollback.length;
+    final absRow = scrollbackLen - _scroll.rowOffset + viewportRow;
+    if (absRow < 0) return const Line([]);
+    if (absRow < scrollbackLen) {
+      return _terminal.scrollback.lineAt(absRow);
     }
-  }
-
-  bool _shouldDrawCursor(Cursor cursor) {
-    return cursor.visible &&
-        cursor.row >= 0 &&
-        cursor.row < _rows &&
-        cursor.col >= 0 &&
-        cursor.col < _cols &&
-        _blinkVisible;
-  }
-
-  Rect _cursorCellRect(Offset offset, Cursor cursor) {
-    return Rect.fromLTWH(
-      offset.dx + cursor.col * _metrics.cellWidth,
-      offset.dy + cursor.row * _metrics.cellHeight,
-      _metrics.cellWidth,
-      _metrics.cellHeight,
-    );
-  }
-
-  Color _cursorColor(Cursor cursor) {
-    if (_theme.cursor.color != null) return _theme.cursor.color!;
-    final cell = _terminal.screen.cellAt(cursor.row, cursor.col);
-    return _theme.resolveColor(cell.foreground, isForeground: true);
-  }
-
-  void _paintBlockCursor(Canvas canvas, Offset offset, Cursor cursor) {
-    _cursorPaint
-      ..style = PaintingStyle.fill
-      ..color = _cursorColor(cursor);
-    canvas.drawRect(_cursorCellRect(offset, cursor), _cursorPaint);
-  }
-
-  void _paintNonBlockCursor(Canvas canvas, Offset offset, Cursor cursor) {
-    final rect = _cursorCellRect(offset, cursor);
-    _cursorPaint.color = _cursorColor(cursor);
-
-    switch (cursor.shape) {
-      case CursorShape.blockHollow:
-        _cursorPaint
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = 1.5;
-        canvas.drawRect(rect, _cursorPaint);
-
-      case CursorShape.underline:
-        _cursorPaint.style = PaintingStyle.fill;
-        final thickness = (_metrics.cellHeight / 8).clamp(1.0, 3.0);
-        canvas.drawRect(
-          Rect.fromLTWH(
-            rect.left,
-            rect.bottom - thickness,
-            rect.width,
-            thickness,
-          ),
-          _cursorPaint,
-        );
-
-      case CursorShape.bar:
-        _cursorPaint.style = PaintingStyle.fill;
-        final thickness = (_metrics.cellWidth / 6).clamp(1.0, 3.0);
-        canvas.drawRect(
-          Rect.fromLTWH(rect.left, rect.top, thickness, rect.height),
-          _cursorPaint,
-        );
-
-      case CursorShape.block:
-        // Painted before text via _paintBlockCursor.
-        break;
-    }
-  }
-
-  void _paintSelection(Canvas canvas, Offset offset) {
-    final selection = _selection!;
-    final topRow = selection.topRow.clamp(0, _rows - 1);
-    final botRow = selection.botRow.clamp(0, _rows - 1);
-    final topCol = selection.topCol.clamp(0, _cols);
-    final botCol = selection.botCol.clamp(0, _cols);
-    final cellWidth = _metrics.cellWidth;
-    final cellHeight = _metrics.cellHeight;
-
-    if (selection.mode == SelectionMode.block) {
-      if (topCol >= botCol) return;
-      canvas.drawRect(
-        Rect.fromLTWH(
-          offset.dx + topCol * cellWidth,
-          offset.dy + topRow * cellHeight,
-          (botCol - topCol) * cellWidth,
-          (botRow - topRow + 1) * cellHeight,
-        ),
-        _selectionPaint,
-      );
-      return;
-    }
-
-    if (topRow == botRow) {
-      if (topCol >= botCol) return;
-      canvas.drawRect(
-        Rect.fromLTWH(
-          offset.dx + topCol * cellWidth,
-          offset.dy + topRow * cellHeight,
-          (botCol - topCol) * cellWidth,
-          cellHeight,
-        ),
-        _selectionPaint,
-      );
-      return;
-    }
-
-    if (topCol < _cols) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          offset.dx + topCol * cellWidth,
-          offset.dy + topRow * cellHeight,
-          (_cols - topCol) * cellWidth,
-          cellHeight,
-        ),
-        _selectionPaint,
-      );
-    }
-
-    if (botRow - topRow > 1) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          offset.dx,
-          offset.dy + (topRow + 1) * cellHeight,
-          _cols * cellWidth,
-          (botRow - topRow - 1) * cellHeight,
-        ),
-        _selectionPaint,
-      );
-    }
-
-    if (botCol > 0) {
-      canvas.drawRect(
-        Rect.fromLTWH(
-          offset.dx,
-          offset.dy + botRow * cellHeight,
-          botCol * cellWidth,
-          cellHeight,
-        ),
-        _selectionPaint,
-      );
-    }
+    final screenRow = absRow - scrollbackLen;
+    return screenRow < _terminal.screen.rows
+        ? _terminal.screen.lineAt(screenRow)
+        : const Line([]);
   }
 
   void _setupSubscriptions() {
@@ -605,20 +539,59 @@ class TerminalRenderBox extends RenderBox {
         case ScreenChanged():
           _onTerminalChanged();
         case CursorChanged():
+          _needsTerminalSync = true;
           markNeedsPaint();
+          _onEvent?.call(event);
         default:
-          break;
+          _onEvent?.call(event);
       }
     });
   }
 
-  void _setupBlinkTimer() {
-    _blinkTimer?.cancel();
-    _blinkTimer = Timer.periodic(_theme.cursor.blinkInterval, (_) {
-      _blinkVisible = !_blinkVisible;
-      _cache.markBlinkingRowsDirty(_rows);
-      if (_rows > 0) _rebuildDirtyRows();
-      markNeedsPaint();
-    });
+  void _syncScrollLayout() {
+    final maxExtent = _scrollMaxExtent;
+    if (_scroll.stickToBottom && maxExtent > 0) {
+      final correction = maxExtent - _offset.pixels;
+      if (correction.abs() > 0.01) _offset.correctBy(correction);
+    }
+    _offset.applyViewportDimension(size.height);
+    _offset.applyContentDimensions(0, maxExtent);
+    _scroll.lastScrollbackLength = _terminal.scrollback.length;
+    _scroll.rowOffset = _computeScrollRowOffset();
+    _ctx.scrollbackLength = _scroll.lastScrollbackLength;
+    _ctx.rowOffset = _scroll.rowOffset;
+  }
+
+  void _syncTerminalState() {
+    if (!_needsTerminalSync || _ctx.rows == 0) return;
+    _needsTerminalSync = false;
+
+    final screen = _terminal.screen;
+    final rowOffset = _scroll.rowOffset;
+
+    _contentCache.detectDirty(screen, rowOffset: rowOffset > 0 ? rowOffset : 0);
+    _updateCursor(_terminal.cursor, _cursorLine);
+    _contentCache.rebuildDirty(_lineResolverFn);
+    _terminal.clearContentChanges();
+  }
+
+  void _updateCursor(Cursor cursor, Line? cursorLine) {
+    final cell = _resolveCursorCell(cursor, cursorLine);
+    final newContent = cell != null
+        ? cellText(cell, blinkVisible: _ctx.blinkVisible)
+        : ' ';
+    final wide = cell?.isWide ?? false;
+
+    if (_isCursorUnchanged(cursor, newContent, wide: wide)) return;
+
+    final cur = _ctx.cursor;
+    cur.row = cursor.row;
+    cur.col = cursor.col;
+    cur.shape = cursor.shape;
+    cur.visible = cursor.visible;
+    cur.wide = wide;
+    cur.cellContent = newContent;
+
+    _rebuildCursorGlyph(cell, newContent);
   }
 }
