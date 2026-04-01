@@ -16,7 +16,7 @@ void main() {
   final event = MouseEvent()
     ..action = .press
     ..button = .left
-    ..setPosition(100.0, 200.0);
+    ..setPosition(x: 100.0, y: 200.0);
 
   final press = encoder.encode(event);
   print('Press: $press');

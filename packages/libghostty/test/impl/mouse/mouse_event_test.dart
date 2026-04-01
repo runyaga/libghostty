@@ -48,7 +48,7 @@ void main() {
     });
 
     test('setPosition and get position roundtrip', () {
-      event.setPosition(10.5, 20.5);
+      event.setPosition(x: 10.5, y: 20.5);
       final (x, y) = event.position;
       expect(x, closeTo(10.5, 0.01));
       expect(y, closeTo(20.5, 0.01));

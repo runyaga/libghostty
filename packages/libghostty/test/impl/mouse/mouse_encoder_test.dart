@@ -14,7 +14,7 @@ void main() {
       event = MouseEvent()
         ..action = MouseAction.press
         ..button = MouseButton.left
-        ..setPosition(10.0, 5.0);
+        ..setPosition(x: 10.0, y: 5.0);
     });
 
     tearDown(() {
@@ -68,7 +68,7 @@ void main() {
       event
         ..action = MouseAction.press
         ..button = MouseButton.left
-        ..setPosition(24.0, 32.0);
+        ..setPosition(x: 24.0, y: 32.0);
 
       final result = encoder.encode(event);
       expect(result, startsWith('\x1b[<'));
@@ -90,7 +90,7 @@ void main() {
       event
         ..action = MouseAction.press
         ..button = MouseButton.left
-        ..setPosition(24.0, 32.0);
+        ..setPosition(x: 24.0, y: 32.0);
 
       final result = encoder.encode(event);
       expect(result, startsWith('\x1b[<'));

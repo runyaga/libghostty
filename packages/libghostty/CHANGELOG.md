@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.0.5
+
+### Breaking
+
+- **Upstream C API migration**: replaced the custom `terminal-c-api.patch`
+  with upstream Ghostty's natively exposed C headers. This is a complete
+  rewrite of the bindings and implementation layer.
+- **Restructured public API**: the package barrel (`libghostty.dart`) has a
+  new export structure. Most types have been renamed or moved.
+- **Removed types**: `Line`, `Screen`, `Scrollback`, `TerminalOptions`,
+  `TerminalEvent`, `TerminalModes`, `Disposable`, `Result`.
+- **Removed sub-barrels**: `input.dart` and `parsing.dart` are removed.
+  Import everything from `libghostty.dart`.
+
+### Added
+
+- **Mouse encoding**: `MouseEncoder` and `MouseEvent` for encoding mouse
+  events into terminal escape sequences (X10, UTF-8, SGR, URxvt, SGR-Pixels).
+- **Build info**: `LibGhosttyBuildInfo` exposes compile-time feature flags
+  (SIMD, Kitty graphics, tmux passthrough) and version info.
+- **Terminal modes**: `TerminalMode` provides typed access to DEC private
+  and ANSI modes with DECRPM report encoding.
+- **Render state**: `RenderState` for efficient viewport snapshotting with
+  two-layer dirty tracking (global + per-row).
+- **Grid references**: `GridRef` for ad-hoc cell lookups by coordinate.
+- **Formatter**: `Formatter` for serializing terminal content as plain text,
+  HTML, or full VT state.
+- **Terminal effects**: callback-based event model (`onWritePty`, `onBell`,
+  `onTitleChanged`, etc.) replacing the `TerminalEvent` stream.
+- **Focus and size report encoding**: `FocusEventEncode` and
+  `SizeReportStyleEncode` extension types.
+- **Programmatic ffigen**: replaced declarative `ffigen.yaml` with a Dart
+  driver that generates three specialized output files (native FFI, enums,
+  WASM typed exports).
+
+### Changed
+
+- Bumped upstream ghostty to `b7e56044d`.
+- Generated enums replace hand-written `src/enums/` directory.
+- Bindings reorganized into `native/`, `wasm/`, and `types/` directories.
+- Implementation layer reorganized into `src/impl/` with `key/`, `mouse/`,
+  and `terminal/` subdirectories.
+
 ## 0.0.4
 
 ### Added

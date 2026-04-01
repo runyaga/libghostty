@@ -3,7 +3,7 @@
 [![pub package](https://img.shields.io/pub/v/libghostty)](https://pub.dev/packages/libghostty)
 [![GitHub Actions](https://github.com/elias8/libghostty/actions/workflows/build.yml/badge.svg)](https://github.com/elias8/libghostty/actions)
 
-Dart FFI & WASM bindings to [libghostty-vt](https://github.com/ghostty-org/ghostty),
+Dart bindings to [libghostty-vt](https://github.com/ghostty-org/ghostty),
 the terminal emulator library from [Ghostty](https://ghostty.org).
 
 | Android | iOS | macOS | Linux | Windows | Web |
@@ -13,13 +13,24 @@ the terminal emulator library from [Ghostty](https://ghostty.org).
 ## Getting started
 
 ```yaml
+# pubspec.yaml
 dependencies:
-  libghostty: ^0.0.4
+  libghostty: ^0.0.5
+```
+
+On web, initialize the WASM module once before using any bindings:
+
+```dart
+await initializeForWeb(Uri.parse('assets/libghostty.wasm'));
 ```
 
 ## Usage
 
-### Terminal emulation with effects
+### Terminal
+
+Terminal emulator with screen state, scrollback, cursor, styles, modes, and
+VT stream processing. Register effect callbacks for PTY writes, bell, title
+changes, and more.
 
 ```dart
 import 'dart:typed_data';
@@ -58,11 +69,14 @@ void main() {
 
 ### Key encoding
 
+Encode key events into terminal escape sequences, supporting legacy and Kitty
+keyboard protocol.
+
 ```dart
 final event = KeyEvent()
+  ..mods = const .ctrl()
   ..action = .press
-  ..key = .c
-  ..mods = const Mods.ctrl();
+  ..key = .c;
 
 final encoded = terminal.keyEncoder.encode(event);
 if (encoded.isNotEmpty) pty.write(utf8.encode(encoded));
@@ -70,6 +84,9 @@ event.dispose();
 ```
 
 ### Mouse encoding
+
+Encode mouse events into escape sequences, supporting X10, UTF-8, SGR, URxvt,
+and SGR-Pixels protocols.
 
 ```dart
 // Sync tracking mode from terminal after each write.
@@ -84,14 +101,16 @@ terminal.mouseEncoder.setSize(const MouseEncoderSize(
 final event = MouseEvent()
   ..action = .press
   ..button = .left;
-event.setPosition(10.0, 5.0);
+event.setPosition(x: 10.0, y: 5.0);
 
 final encoded = terminal.mouseEncoder.encode(event);
 if (encoded.isNotEmpty) pty.write(utf8.encode(encoded));
 event.dispose();
 ```
 
-### Formatting terminal content
+### Formatting
+
+Format terminal content as plain text, VT sequences, or HTML.
 
 ```dart
 final formatter = terminal.createFormatter(format: .plain);
@@ -100,6 +119,9 @@ formatter.dispose();
 ```
 
 ### SGR and OSC parsing
+
+Parse SGR (Select Graphic Rendition) parameters into typed attributes and
+OSC (Operating System Command) sequences from a byte stream.
 
 ```dart
 // SGR: parse Select Graphic Rendition parameters.
@@ -125,17 +147,13 @@ print(command.windowTitle); // My Title
 osc.dispose();
 ```
 
-### Paste safety
+### Paste validation
+
+Check paste data for unsafe sequences (newlines, bracketed paste escapes)
+before writing to the terminal.
 
 ```dart
 pasteIsSafe('hello');           // true
 pasteIsSafe('rm -rf /\n');      // false
 pasteIsSafe('\x1b[201~inject'); // false
-```
-
-### Web (WASM)
-
-```dart
-// Call once before using any bindings on web. No-op on other platforms.
-await initializeForWeb(Uri.parse('assets/libghostty.wasm'));
 ```

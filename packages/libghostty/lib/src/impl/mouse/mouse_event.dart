@@ -22,7 +22,7 @@ int mouseEventHandle(MouseEvent event) => event._handle;
 ///   ..action = MouseAction.press
 ///   ..button = MouseButton.left
 ///   ..mods = Mods.none()
-///   ..setPosition(10.0, 20.0);
+///   ..setPosition(x: 10.0, y: 20.0);
 ///
 /// final seq = encoder.encode(event);
 /// if (seq.isNotEmpty) pty.write(utf8.encode(seq));
@@ -95,7 +95,7 @@ class MouseEvent {
   }
 
   /// Sets the event position in surface-space pixels.
-  void setPosition(double x, double y) {
+  void setPosition({required double x, required double y}) {
     bindings.mouseEventSetPosition(_handle, x, y);
   }
 

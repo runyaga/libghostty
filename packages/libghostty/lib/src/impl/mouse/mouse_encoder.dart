@@ -32,7 +32,7 @@ int mouseEncoderHandle(MouseEncoder encoder) => encoder._handle;
 /// final event = MouseEvent()
 ///   ..action = MouseAction.press
 ///   ..button = MouseButton.left
-///   ..setPosition(10.0, 20.0);
+///   ..setPosition(x: 10.0, y: 20.0);
 ///
 /// final seq = encoder.encode(event);
 /// if (seq.isNotEmpty) pty.write(utf8.encode(seq));
