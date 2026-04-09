@@ -1,155 +1,118 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
-import 'package:libghostty/libghostty.dart' hide KeyEvent;
 
 import '../foundation.dart';
-import '../rendering.dart' show TerminalRenderer, measureCellMetrics;
+import '../rendering.dart';
 import 'terminal_controller.dart';
 import 'terminal_gesture_detector.dart';
 import 'terminal_scroll_controller.dart';
 import 'terminal_shortcut_scope.dart';
 import 'terminal_view_binding.dart';
 
-final _appCursorDown = Uint8List.fromList([0x1b, 0x4f, 0x42]);
-final _appCursorUp = Uint8List.fromList([0x1b, 0x4f, 0x41]);
-final _cursorDown = Uint8List.fromList([0x1b, 0x5b, 0x42]);
-final _cursorUp = Uint8List.fromList([0x1b, 0x5b, 0x41]);
-
-Uint8List _encodePaste(String text, {required bool bracketedPaste}) {
-  if (!bracketedPaste) return utf8.encode(text);
-  return utf8.encode('\x1b[200~$text\x1b[201~');
-}
-
-/// A terminal widget that renders a working terminal with zero configuration
-/// beyond providing a [Terminal] instance.
+/// Displays a terminal and handles user interaction.
+///
+/// Pair with a [TerminalController] to create a working terminal. The
+/// controller owns the terminal state; the view handles rendering,
+/// scrolling, gestures, focus, and keyboard shortcuts.
+///
+/// Fills the available space and computes the grid dimensions (columns
+/// and rows) from the font metrics and pixel area.
 ///
 /// ```dart
-/// TerminalView(terminal: terminal)
-/// ```
-///
-/// For PTY integration, listen to terminal events and provide output/resize
-/// callbacks:
-///
-/// ```dart
-/// TerminalView(
-///   terminal: terminal,
-///   onOutput: (bytes) => pty.write(bytes),
-///   onResize: (size) => pty.resize(size.cols, size.rows),
-/// )
-/// ```
-///
-/// For programmatic control, provide a [TerminalController]:
-///
-/// ```dart
-/// final controller = TerminalController();
+/// final controller = TerminalController()
+///   ..onOutput = (bytes) => pty.write(bytes);
 ///
 /// TerminalView(
-///   terminal: terminal,
 ///   controller: controller,
-///   onOutput: (bytes) => pty.write(bytes),
-///   onResize: (size) => pty.resize(size.cols, size.rows),
-/// )
-///
-/// controller.sendText('ls -la\n');
+///   theme: TerminalTheme.dark(),
+///   autofocus: true,
+/// );
 /// ```
 class TerminalView extends StatefulWidget {
-  /// The terminal instance to render.
-  final Terminal terminal;
+  /// The controller that owns the terminal instance.
+  ///
+  /// Can be swapped at runtime; the view detaches from the old controller
+  /// and attaches to the new one.
+  final TerminalController controller;
 
-  /// Visual style. Defaults to [TerminalTheme.dark()] when null.
+  /// Visual style. Defaults to [TerminalTheme.dark()].
+  ///
+  /// Changing the font family or size recalculates cell metrics and
+  /// may resize the grid.
   final TerminalTheme? theme;
 
-  /// Optional controller for programmatic interaction.
+  /// Focus node for this terminal. Created internally when null.
   ///
-  /// If null, the widget creates one internally.
-  final TerminalController? controller;
-
-  /// Optional focus node. If null, the widget creates one internally.
+  /// Supply your own to manage focus externally (e.g. for tab switching
+  /// or split pane navigation).
   final FocusNode? focusNode;
 
   /// Whether to request focus when first inserted into the tree.
   final bool autofocus;
 
-  /// Bytes that should be written to the PTY.
+  /// Whether to show the soft keyboard when focus is gained.
   ///
-  /// Aggregates all output: keyboard input, paste, terminal responses,
-  /// mouse tracking events, and programmatic [TerminalController.sendText]
-  /// or [TerminalController.sendKey] calls.
-  final ValueChanged<Uint8List>? onOutput;
-
-  /// Fires when the terminal grid dimensions change during layout.
-  final ValueChanged<TerminalSize>? onResize;
-
-  /// Fires when the user taps a cell with an OSC 8 hyperlink.
-  final ValueChanged<String>? onLinkTap;
-
-  /// Additional shortcut bindings merged over platform defaults.
-  final Map<ShortcutActivator, Intent>? shortcuts;
-
-  /// Whether the terminal accepts keyboard input.
-  final TerminalInputMode inputMode;
-
-  /// Whether to show the soft keyboard when the terminal receives focus.
-  ///
-  /// Set to `false` to prevent the keyboard from appearing automatically.
-  /// Use [TerminalController.showKeyboard] to show it imperatively.
+  /// The keyboard can still be shown programmatically via
+  /// [TerminalController.showKeyboard] regardless of this setting.
   final bool showKeyboard;
 
-  /// Controls when the mouse cursor hides.
-  ///
-  /// Defaults to [MouseAutoHide.onInput], which hides the cursor on
-  /// keyboard input and shows it again on mouse movement.
+  /// When to auto-hide the mouse cursor.
   final MouseAutoHide mouseAutoHide;
 
   /// Controls which selection gestures are enabled and how they behave.
-  ///
-  /// Defaults to [TerminalGestureSettings()] which enables all selection
-  /// gestures with standard platform conventions.
   final TerminalGestureSettings gestureSettings;
 
-  /// Inset padding around the terminal content.
+  /// Padding around the terminal grid.
   ///
-  /// ```dart
-  /// TerminalView(
-  ///   terminal: terminal,
-  ///   padding: EdgeInsets.all(8),
-  /// )
-  /// ```
+  /// Filled with the theme background color. The grid is sized from
+  /// the remaining space after padding. Defaults to 8px on all sides.
   final EdgeInsets padding;
 
-  /// Scroll physics for the terminal viewport.
+  /// Scroll physics for scrollback navigation.
   ///
-  /// Controls momentum, bounce, and other scroll behavior. When null,
-  /// platform-default physics apply.
+  /// Disabled automatically when the terminal program requests mouse
+  /// tracking, so gestures are forwarded as mouse events instead.
   final ScrollPhysics? scrollPhysics;
 
-  /// Optional scroll controller for programmatic scroll access.
+  /// Scroll controller for programmatic scrollback access.
   ///
-  /// If null, the widget creates one internally.
+  /// Created internally when null.
   final TerminalScrollController? scrollController;
+
+  /// Shortcut bindings merged over platform defaults.
+  ///
+  /// Defaults: Cmd+C/V/A/K on macOS, Ctrl+Shift+C/V/A/K on Linux,
+  /// Ctrl+C/V/A/K on Windows.
+  final Map<ShortcutActivator, Intent>? shortcuts;
+
+  /// Raw TTF/OTF font file bytes for exact metric extraction.
+  ///
+  /// When provided, takes priority over automatic font resolution. The
+  /// font's `post` and `OS/2` tables are parsed to get exact underline
+  /// and strikethrough thickness and position values.
+  ///
+  /// When null (the default), the widget automatically resolves font
+  /// data by searching asset bundles and system font directories via
+  /// [FontDataResolver]. If auto-resolution also fails, heuristic
+  /// fallbacks are used.
+  final Uint8List? fontData;
 
   const TerminalView({
     super.key,
-    required this.terminal,
+    required this.controller,
     this.theme,
-    this.controller,
+    this.fontData,
     this.focusNode,
     this.autofocus = false,
-    this.onOutput,
-    this.onResize,
-    this.onLinkTap,
-    this.shortcuts,
-    this.inputMode = .interactive,
     this.showKeyboard = true,
     this.mouseAutoHide = .onInput,
     this.gestureSettings = const TerminalGestureSettings(),
     this.padding = const EdgeInsets.all(8),
     this.scrollPhysics,
     this.scrollController,
+    this.shortcuts,
   });
 
   @override
@@ -157,87 +120,78 @@ class TerminalView extends StatefulWidget {
 }
 
 class _TerminalViewState extends State<TerminalView> {
-  late TerminalController _controller;
-  late TerminalViewBinding _binding;
   late FocusNode _focusNode;
   late TerminalTheme _theme;
   late CellMetrics _metrics;
-
+  late TerminalViewBinding _binding;
   late TerminalScrollController _scrollController;
-  var _ownsController = false;
+
+  Uint8List? _resolvedFontData;
   var _ownsFocusNode = false;
   var _ownsScrollController = false;
-  var _mouseMode = MouseTracking.none;
-  var _mouseShape = MouseShape.text;
   var _mouseCursorHidden = false;
-  var _screenMode = ScreenMode.primary;
   var _lastAlternatePixels = 0.0;
-  var _cursorKeyApplication = false;
-  final _cursorBlinking = true;
   var _visibleRows = 0;
   Timer? _blinkTimer;
   var _blinkVisible = true;
-  String? _highlightedHyperlink;
-  Offset? _lastHoverPosition;
 
-  bool get _isAtBottom {
-    if (_screenMode == .alternate) return true;
-    if (!_scrollController.hasClients) return true;
-    final position = _scrollController.position;
-    if (!position.hasContentDimensions) return true;
-    return position.pixels >= position.maxScrollExtent - 1.0;
+  TerminalController get _controller => widget.controller;
+
+  Brightness get _themeBrightness {
+    return _theme.background.computeLuminance() > 0.5 ? .light : .dark;
   }
 
   @override
   Widget build(BuildContext context) {
-    Widget terminal = Focus(
-      onKeyEvent: _handleKeyEvent,
-      child: TerminalShortcutScope(
-        controller: _controller,
-        onPaste: _handlePaste,
-        enableSelectAll: widget.gestureSettings.enabledSelections.contains(
-          SelectionGesture.selectAll,
-        ),
-        shortcuts: widget.shortcuts,
-        child: Focus(
-          focusNode: _focusNode,
-          autofocus: widget.autofocus,
-          onFocusChange: _handleFocusChange,
-          child: TerminalGestureDetector(
-            metrics: _metrics,
-            mouseMode: _mouseMode,
-            controller: _controller,
-            visibleRows: _visibleRows,
-            onOutput: widget.onOutput,
-            onLinkTap: widget.onLinkTap,
-            getHyperlinkAt: _hyperlinkAt,
-            settings: widget.gestureSettings,
-            scrollController: _scrollController,
-            getScreen: () => widget.terminal.screen,
-            onSelectionChanged: _handleSelectionChanged,
-            onFocusRequest: () => _controller.requestFocus(),
-            child: Scrollable(
-              controller: _scrollController,
-              physics: switch (_mouseMode) {
-                .none => widget.scrollPhysics,
-                _ => const NeverScrollableScrollPhysics(),
-              },
-              viewportBuilder: (_, offset) => _buildViewport(offset),
+    return GestureDetector(
+      behavior: .translucent,
+      onTap: _controller.requestFocus,
+      child: ColoredBox(
+        color: _theme.background,
+        child: Padding(
+          padding: widget.padding,
+          child: Focus(
+            onKeyEvent: _handleKeyEvent,
+            child: TerminalShortcutScope(
+              onPaste: _handlePaste,
+              controller: _controller,
+              shortcuts: widget.shortcuts,
+              enableSelectAll: widget.gestureSettings.enabledSelections
+                  .contains(SelectionGesture.selectAll),
+              child: MouseRegion(
+                onHover: _handleMouseHover,
+                cursor: _effectiveMouseCursor(),
+                child: Focus(
+                  focusNode: _focusNode,
+                  autofocus: widget.autofocus,
+                  onFocusChange: _handleFocusChange,
+                  child: TerminalGestureDetector(
+                    metrics: _metrics,
+                    binding: _binding,
+                    visibleRows: _visibleRows,
+                    settings: widget.gestureSettings,
+                    scrollController: _scrollController,
+                    child: Scrollable(
+                      controller: _scrollController,
+                      physics: widget.scrollPhysics,
+                      viewportBuilder: (_, offset) => TerminalRenderer(
+                        theme: _theme,
+                        offset: offset,
+                        metrics: _metrics,
+                        renderObserver: _controller,
+                        terminal: _binding.terminal,
+                        blinkVisible: _blinkVisible,
+                        onResize: _handleResize,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ),
       ),
     );
-
-    if (widget.padding != EdgeInsets.zero) {
-      terminal = Listener(
-        behavior: HitTestBehavior.translucent,
-        onPointerDown: (_) => _controller.requestFocus(),
-        child: ColoredBox(color: _theme.background, child: terminal),
-      );
-    }
-
-    return terminal;
   }
 
   @override
@@ -245,19 +199,19 @@ class _TerminalViewState extends State<TerminalView> {
     super.didUpdateWidget(oldWidget);
 
     if (widget.controller != oldWidget.controller) {
-      _detachBinding();
-      if (_ownsController) _controller.dispose();
-      _controller = widget.controller ?? TerminalController();
+      oldWidget.controller.removeListener(_onControllerChanged);
+      _binding.detach();
       _binding = _asBinding(_controller);
-      _ownsController = widget.controller == null;
-      _attachBinding();
+      _binding.brightness = _themeBrightness;
+      _binding.attach(_focusNode, _scrollController);
+      _controller.addListener(_onControllerChanged);
     }
 
     if (widget.focusNode != oldWidget.focusNode) {
       if (_ownsFocusNode) _focusNode.dispose();
       _focusNode = widget.focusNode ?? FocusNode();
       _ownsFocusNode = widget.focusNode == null;
-      _binding.focusNode = _focusNode;
+      _binding.attach(_focusNode, _scrollController);
     }
 
     if (widget.scrollController != oldWidget.scrollController) {
@@ -265,38 +219,47 @@ class _TerminalViewState extends State<TerminalView> {
       if (_ownsScrollController) _scrollController.dispose();
       _scrollController = widget.scrollController ?? TerminalScrollController();
       _ownsScrollController = widget.scrollController == null;
-      _scrollController.screenMode = _screenMode;
+      _scrollController.activeScreen = _controller.activeScreen;
       _scrollController.addListener(_onScrollChanged);
+      _binding.attach(_focusNode, _scrollController);
     }
 
     if (widget.theme != oldWidget.theme) {
       final oldTheme = _theme;
       _theme = widget.theme ?? TerminalTheme.dark();
-      _metrics = measureCellMetrics(
-        fontSize: _theme.fontSize,
-        fontFamily: _theme.fontFamily,
-        fontFamilyFallback: _theme.fontFamilyFallback,
-      );
-      if (_theme.cursor.blinkInterval != oldTheme.cursor.blinkInterval &&
-          _controller.hasFocus &&
-          _isAtBottom) {
-        _startBlink();
-      }
-    }
 
-    if (widget.terminal != oldWidget.terminal) {
-      _binding.terminal = widget.terminal;
-      _syncModes(widget.terminal.modes);
-      _scrollToBottom();
+      // Only recalculate metrics when font properties change.
+      // Color-only theme changes must not trigger metric recalculation,
+      // which would clear the atlas and cause decoration flicker.
+      if (_theme.fontSize != oldTheme.fontSize ||
+          _theme.fontWeight != oldTheme.fontWeight ||
+          _theme.fontFamily != oldTheme.fontFamily ||
+          _theme.fontFamilyFallback != oldTheme.fontFamilyFallback) {
+        _metrics = measureCellMetrics(
+          fontSize: _theme.fontSize,
+          fontWeight: _theme.fontWeight,
+          fontFamily: _theme.fontFamily,
+          fontFamilyFallback: _theme.fontFamilyFallback,
+          fontData: widget.fontData ?? _resolvedFontData,
+        );
+      }
+
+      _binding.brightness = _themeBrightness;
+      if (_theme.cursor.blinkInterval != oldTheme.cursor.blinkInterval) {
+        _syncBlink();
+      }
+      if (_theme.fontFamily != oldTheme.fontFamily && widget.fontData == null) {
+        _resolvedFontData = null;
+        unawaited(_resolveFontData(_theme.fontFamily));
+      }
     }
   }
 
   @override
   void dispose() {
-    HardwareKeyboard.instance.removeHandler(_handleHardwareKey);
     _blinkTimer?.cancel();
-    _detachBinding();
-    if (_ownsController) _controller.dispose();
+    _controller.removeListener(_onControllerChanged);
+    _binding.detach();
     if (_ownsFocusNode) _focusNode.dispose();
     _scrollController.removeListener(_onScrollChanged);
     if (_ownsScrollController) _scrollController.dispose();
@@ -307,9 +270,7 @@ class _TerminalViewState extends State<TerminalView> {
   void initState() {
     super.initState();
 
-    _controller = widget.controller ?? TerminalController();
     _binding = _asBinding(_controller);
-    _ownsController = widget.controller == null;
 
     _focusNode = widget.focusNode ?? FocusNode();
     _ownsFocusNode = widget.focusNode == null;
@@ -317,16 +278,114 @@ class _TerminalViewState extends State<TerminalView> {
     _theme = widget.theme ?? TerminalTheme.dark();
     _metrics = measureCellMetrics(
       fontSize: _theme.fontSize,
+      fontWeight: _theme.fontWeight,
       fontFamily: _theme.fontFamily,
       fontFamilyFallback: _theme.fontFamilyFallback,
+      fontData: widget.fontData,
     );
+
+    if (widget.fontData == null) {
+      unawaited(_resolveFontData(_theme.fontFamily));
+    }
 
     _scrollController = widget.scrollController ?? TerminalScrollController();
     _ownsScrollController = widget.scrollController == null;
     _scrollController.addListener(_onScrollChanged);
 
-    _attachBinding();
-    HardwareKeyboard.instance.addHandler(_handleHardwareKey);
+    _binding.brightness = _themeBrightness;
+    _binding.attach(_focusNode, _scrollController);
+    _controller.addListener(_onControllerChanged);
+  }
+
+  MouseCursor _effectiveMouseCursor() {
+    if (_mouseCursorHidden) return SystemMouseCursors.none;
+    if (_controller.mouseTracking != .none) return SystemMouseCursors.basic;
+    return SystemMouseCursors.text;
+  }
+
+  void _handleFocusChange(bool focused) {
+    if (focused && widget.showKeyboard) _controller.showKeyboard();
+  }
+
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final result = _binding.handleKeyEvent(event);
+
+    if (result == .handled) {
+      _syncBlink();
+      if (widget.mouseAutoHide == .onInput && !_mouseCursorHidden) {
+        setState(() => _mouseCursorHidden = true);
+      }
+    }
+
+    return result;
+  }
+
+  void _handleMouseHover(PointerHoverEvent event) {
+    if (_mouseCursorHidden) setState(() => _mouseCursorHidden = false);
+  }
+
+  Future<void> _handlePaste() async {
+    final data = await Clipboard.getData(Clipboard.kTextPlain);
+    if (data?.text == null || data!.text!.isEmpty) return;
+    _controller.paste(data.text!);
+  }
+
+  void _handleResize(int cols, int rows) {
+    _visibleRows = rows;
+    _binding.handleResize(
+      cols: cols,
+      rows: rows,
+      metrics: _metrics,
+      padding: .zero,
+    );
+  }
+
+  void _onControllerChanged() {
+    _scrollController.activeScreen = _controller.activeScreen;
+    setState(_syncBlink);
+  }
+
+  void _onScrollChanged() {
+    _syncBlink();
+    if (!_scrollController.hasClients) return;
+    final cellHeight = _metrics.cellHeight;
+    if (cellHeight <= 0) return;
+    final pixels = _scrollController.position.pixels;
+    final delta = pixels - _lastAlternatePixels;
+    final lines = (delta / cellHeight).truncate();
+    if (lines == 0) return;
+    _lastAlternatePixels += lines * cellHeight;
+    _binding.handleScroll(lines);
+  }
+
+  /// Asynchronously resolves font data and recomputes metrics when found.
+  Future<void> _resolveFontData(String fontFamily) async {
+    if (!mounted || _theme.fontFamily != fontFamily) return;
+    final data = await FontDataResolver.resolve(fontFamily);
+    if (data == null) return;
+
+    _resolvedFontData = data;
+
+    setState(() {
+      _metrics = measureCellMetrics(
+        fontSize: _theme.fontSize,
+        fontWeight: _theme.fontWeight,
+        fontFamily: _theme.fontFamily,
+        fontFamilyFallback: _theme.fontFamilyFallback,
+        fontData: data,
+      );
+    });
+  }
+
+  void _syncBlink() {
+    _blinkTimer?.cancel();
+    _blinkTimer = null;
+    if (_binding.cursorBlinks) {
+      _blinkTimer = Timer.periodic(_theme.cursor.blinkInterval, (_) {
+        if (mounted) setState(() => _blinkVisible = !_blinkVisible);
+      });
+    }
+    if (!_blinkVisible) setState(() => _blinkVisible = true);
   }
 
   static TerminalViewBinding _asBinding(TerminalController controller) {
@@ -336,298 +395,5 @@ class _TerminalViewState extends State<TerminalView> {
       'Use the TerminalController() factory constructor.',
     );
     return controller as TerminalViewBinding;
-  }
-
-  void _attachBinding() {
-    _binding
-      ..focusNode = _focusNode
-      ..terminal = widget.terminal
-      ..onOutput = _handleOutput;
-  }
-
-  Widget _buildViewport(ViewportOffset offset) {
-    Widget viewport = MouseRegion(
-      onHover: _handleMouseHover,
-      onExit: _handleMouseExit,
-      cursor: _effectiveMouseCursor(),
-      child: TerminalRenderer(
-        theme: _theme,
-        offset: offset,
-        metrics: _metrics,
-        renderState: _controller,
-        terminal: widget.terminal,
-        blinkVisible: _blinkVisible,
-        onResize: _handleResize,
-        onEvent: _handleTerminalEvent,
-        highlightedHyperlink: _highlightedHyperlink,
-      ),
-    );
-
-    if (widget.padding != .zero) {
-      viewport = Padding(padding: widget.padding, child: viewport);
-    }
-
-    return viewport;
-  }
-
-  int _contentOrigin() {
-    if (_screenMode == .alternate) return 0;
-    final sc = _scrollController;
-    if (!sc.hasClients || _metrics.cellHeight <= 0) return 0;
-    final scrollbackLen = widget.terminal.scrollback.length;
-    if (scrollbackLen == 0) return 0;
-    final maxExtent = scrollbackLen * _metrics.cellHeight;
-    final pixels = sc.position.pixels.clamp(0.0, maxExtent);
-    return (pixels / _metrics.cellHeight).floor();
-  }
-
-  void _detachBinding() {
-    _binding
-      ..detachInput()
-      ..focusNode = null
-      ..terminal = null
-      ..onOutput = null;
-  }
-
-  MouseCursor _effectiveMouseCursor() {
-    if (_mouseCursorHidden) return SystemMouseCursors.none;
-    if (_highlightedHyperlink != null) return SystemMouseCursors.click;
-    if (_mouseMode != MouseTracking.none) return SystemMouseCursors.basic;
-    return cursorFromMouseShape(_mouseShape);
-  }
-
-  void _handleFocusChange(bool focused) {
-    if (focused) {
-      if (widget.inputMode == TerminalInputMode.interactive) {
-        final brightness = _theme.background.computeLuminance() > 0.5
-            ? Brightness.light
-            : Brightness.dark;
-        _binding.attachInput(keyboardAppearance: brightness);
-        if (widget.showKeyboard) _controller.showKeyboard();
-      }
-      if (_isAtBottom) _startBlink();
-    } else {
-      _binding.detachInput();
-      _controller.clearVirtualMods();
-      _stopBlink();
-    }
-  }
-
-  bool _handleHardwareKey(KeyEvent event) {
-    if (event.logicalKey == .metaLeft || event.logicalKey == .metaRight) {
-      _updateHighlightedHyperlink();
-    }
-    return false;
-  }
-
-  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
-    if (widget.inputMode == TerminalInputMode.readOnly) {
-      return KeyEventResult.ignored;
-    }
-
-    if (_tryExtendSelection(event)) return KeyEventResult.handled;
-
-    final bytes = _binding.encodeKeyboardEvent(event);
-    if (bytes == null) return KeyEventResult.ignored;
-
-    if (_controller.selection != null) _handleSelectionChanged(null);
-
-    widget.onOutput?.call(bytes);
-    _resetBlink();
-
-    if (widget.mouseAutoHide == MouseAutoHide.onInput && !_mouseCursorHidden) {
-      setState(() => _mouseCursorHidden = true);
-    }
-
-    _scrollToBottom();
-
-    return KeyEventResult.handled;
-  }
-
-  void _handleMouseExit(PointerExitEvent event) {
-    _lastHoverPosition = null;
-    if (_highlightedHyperlink != null) {
-      setState(() => _highlightedHyperlink = null);
-    }
-  }
-
-  void _handleMouseHover(PointerHoverEvent event) {
-    if (_mouseCursorHidden) setState(() => _mouseCursorHidden = false);
-    _lastHoverPosition = event.localPosition;
-    _updateHighlightedHyperlink();
-  }
-
-  void _handleOutput(Uint8List bytes) {
-    widget.onOutput?.call(bytes);
-    _scrollToBottom();
-    _resetBlink();
-  }
-
-  Future<void> _handlePaste() async {
-    final data = await Clipboard.getData(Clipboard.kTextPlain);
-    if (data?.text == null || data!.text!.isEmpty) return;
-    final bytes = _encodePaste(
-      data.text!,
-      bracketedPaste: widget.terminal.modes.bracketedPaste,
-    );
-    widget.onOutput?.call(bytes);
-    _resetBlink();
-    _scrollToBottom();
-  }
-
-  void _handleResize(TerminalSize size) {
-    _visibleRows = size.rows;
-    widget.onResize?.call(size);
-  }
-
-  void _handleSelectionChanged(TerminalSelection? selection) {
-    _binding.selection = selection?.scroll(_contentOrigin());
-  }
-
-  String? _hyperlinkAt(int row, int col) {
-    final terminal = widget.terminal;
-    final screen = terminal.screen;
-    if (col < 0 || col >= screen.cols) return null;
-    final scrollbackLen = terminal.scrollback.length;
-    final absRow = _contentOrigin() + row;
-    if (absRow < 0) return null;
-    if (absRow < scrollbackLen) {
-      return terminal.scrollback.lineAt(absRow).cellAt(col).hyperlink;
-    }
-    final screenRow = absRow - scrollbackLen;
-    if (screenRow < 0 || screenRow >= screen.rows) return null;
-    return screen.cellAt(screenRow, col).hyperlink;
-  }
-
-  void _onScrollChanged() {
-    if (_screenMode != .alternate) return;
-    if (!_scrollController.hasClients) return;
-    final cellHeight = _metrics.cellHeight;
-    if (cellHeight <= 0) return;
-    final pixels = _scrollController.position.pixels;
-    final delta = pixels - _lastAlternatePixels;
-    final lines = (delta / cellHeight).truncate();
-    if (lines == 0) return;
-    _lastAlternatePixels += lines * cellHeight;
-    final up = _cursorKeyApplication ? _appCursorUp : _cursorUp;
-    final down = _cursorKeyApplication ? _appCursorDown : _cursorDown;
-    final key = lines < 0 ? up : down;
-    final count = lines.abs();
-    final bytes = Uint8List(key.length * count);
-    for (var i = 0; i < count; i++) {
-      bytes.setRange(i * key.length, (i + 1) * key.length, key);
-    }
-    widget.onOutput?.call(bytes);
-  }
-
-  void _resetBlink() {
-    if (!_controller.hasFocus || !_isAtBottom) return;
-    _startBlink();
-  }
-
-  void _scrollToBottom() {
-    if (_screenMode == .alternate) return;
-    if (!_scrollController.hasClients) return;
-    final position = _scrollController.position;
-    if (position.pixels >= position.maxScrollExtent) return;
-    _scrollController.jumpTo(position.maxScrollExtent);
-  }
-
-  void _startBlink() {
-    if (!_cursorBlinking) return;
-    _blinkTimer?.cancel();
-    if (!_blinkVisible) setState(() => _blinkVisible = true);
-    _blinkTimer = Timer.periodic(_theme.cursor.blinkInterval, (_) {
-      if (!mounted) return;
-      setState(() => _blinkVisible = !_blinkVisible);
-    });
-  }
-
-  void _stopBlink() {
-    _blinkTimer?.cancel();
-    _blinkTimer = null;
-    if (!_blinkVisible) setState(() => _blinkVisible = true);
-  }
-
-  void _handleTerminalEvent(TerminalEvent event) {
-    switch (event) {
-      // TODO(elias8): sync cursor blink state once upstream exposes it.
-      case CursorChanged():
-        break;
-      case MouseShapeChanged(:final shape):
-        if (shape != _mouseShape) {
-          _mouseShape = shape;
-          setState(() {});
-        }
-      case ModeChanged(:final modes):
-        _syncModes(modes);
-      case ResponseReceived(:final response):
-        widget.onOutput?.call(response);
-      default:
-        break;
-    }
-  }
-
-  void _syncModes(TerminalModes modes) {
-    var needsRebuild = false;
-
-    final newMouseMode = _binding.syncModes(modes);
-    if (newMouseMode != null) {
-      _mouseMode = newMouseMode;
-      needsRebuild = true;
-    }
-
-    if (modes.screenMode != _screenMode) {
-      final newScreenMode = modes.screenMode;
-      _screenMode = newScreenMode;
-      _scrollController.screenMode = newScreenMode;
-      if (newScreenMode == .alternate && _scrollController.hasClients) {
-        _lastAlternatePixels = _scrollController.position.pixels;
-      }
-      needsRebuild = true;
-    }
-
-    if (modes.cursorKeyApplication != _cursorKeyApplication) {
-      _cursorKeyApplication = modes.cursorKeyApplication;
-      needsRebuild = true;
-    }
-
-    if (needsRebuild) setState(() {});
-  }
-
-  bool _tryExtendSelection(KeyEvent event) {
-    if (event is! KeyDownEvent && event is! KeyRepeatEvent) return false;
-    if (_controller.selection == null) return false;
-    if (!HardwareKeyboard.instance.isShiftPressed) return false;
-
-    final (dRow, dCol) = switch (event.logicalKey) {
-      .arrowRight => (0, 1),
-      .arrowLeft => (0, -1),
-      .arrowUp => (-1, 0),
-      .arrowDown => (1, 0),
-      _ => (0, 0),
-    };
-    if (dRow == 0 && dCol == 0) return false;
-
-    final screen = widget.terminal.screen;
-    _binding.selection = _controller.selection!.moveEnd(
-      dRow,
-      dCol,
-      totalCols: screen.cols,
-      totalRows: widget.terminal.scrollback.length + screen.rows,
-    );
-    return true;
-  }
-
-  void _updateHighlightedHyperlink() {
-    String? uri;
-    final pos = _lastHoverPosition;
-    if (pos != null && HardwareKeyboard.instance.isMetaPressed) {
-      final (row, col) = _metrics.cellAt(pos);
-      uri = _hyperlinkAt(row, col);
-    }
-    if (uri != _highlightedHyperlink) {
-      setState(() => _highlightedHyperlink = uri);
-    }
   }
 }

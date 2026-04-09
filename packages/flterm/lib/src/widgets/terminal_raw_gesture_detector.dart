@@ -1,5 +1,6 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
+import 'package:meta/meta.dart';
 
 /// Gesture detector that recognizes taps (with multi-tap counting), mouse
 /// drags, and touch long presses.
@@ -16,6 +17,7 @@ import 'package:flutter/widgets.dart';
 ///   child: Container(),
 /// )
 /// ```
+@internal
 class TerminalRawGestureDetector extends StatefulWidget {
   final Widget child;
 

@@ -1,7 +1,7 @@
 import 'package:flterm/src/widgets.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:libghostty/libghostty.dart' show ScreenMode;
+import 'package:libghostty/libghostty.dart' show TerminalScreen;
 
 void main() {
   group('TerminalScrollController', () {
@@ -11,8 +11,8 @@ void main() {
 
     tearDown(() => controller.dispose());
 
-    test('screenMode defaults to primary', () {
-      expect(controller.screenMode, ScreenMode.primary);
+    test('activeScreen defaults to primary', () {
+      expect(controller.activeScreen, TerminalScreen.primary);
     });
 
     testWidgets('createScrollPosition returns TerminalScrollPosition', (
@@ -22,16 +22,18 @@ void main() {
       expect(controller.position, isA<TerminalScrollPosition>());
     });
 
-    testWidgets('screenMode propagates to attached positions', (tester) async {
+    testWidgets('activeScreen propagates to attached positions', (
+      tester,
+    ) async {
       await tester.pumpWidget(_buildScrollable(controller));
 
-      controller.screenMode = ScreenMode.alternate;
+      controller.activeScreen = .alternate;
 
       final position = controller.position as TerminalScrollPosition;
-      expect(position.screenMode, ScreenMode.alternate);
+      expect(position.activeScreen, TerminalScreen.alternate);
 
-      controller.screenMode = ScreenMode.primary;
-      expect(position.screenMode, ScreenMode.primary);
+      controller.activeScreen = .primary;
+      expect(position.activeScreen, TerminalScreen.primary);
     });
   });
 
@@ -52,7 +54,7 @@ void main() {
     testWidgets('uses infinite extents in alternate mode', (tester) async {
       await tester.pumpWidget(_buildScrollable(controller));
 
-      controller.screenMode = ScreenMode.alternate;
+      controller.activeScreen = .alternate;
       // Content change forces relayout, which calls applyContentDimensions.
       await tester.pumpWidget(_buildScrollable(controller, contentHeight: 501));
 
@@ -68,14 +70,14 @@ void main() {
       await tester.pump();
       expect(controller.position.pixels, 100);
 
-      controller.screenMode = ScreenMode.alternate;
+      controller.activeScreen = .alternate;
       await tester.pumpWidget(_buildScrollable(controller));
 
       controller.jumpTo(9999);
       await tester.pump();
       expect(controller.position.pixels, 9999);
 
-      controller.screenMode = ScreenMode.primary;
+      controller.activeScreen = .primary;
       await tester.pumpWidget(_buildScrollable(controller));
 
       expect(controller.position.pixels, 100);
@@ -86,7 +88,7 @@ void main() {
     ) async {
       await tester.pumpWidget(_buildScrollable(controller));
 
-      controller.screenMode = ScreenMode.alternate;
+      controller.activeScreen = .alternate;
       await tester.pumpWidget(_buildScrollable(controller));
 
       var notified = false;
@@ -103,12 +105,12 @@ void main() {
       controller.jumpTo(maxExtent);
       await tester.pump();
 
-      controller.screenMode = ScreenMode.alternate;
+      controller.activeScreen = .alternate;
       await tester.pumpWidget(_buildScrollable(controller));
 
       await tester.pumpWidget(_buildScrollable(controller, contentHeight: 200));
 
-      controller.screenMode = ScreenMode.primary;
+      controller.activeScreen = .primary;
       await tester.pumpWidget(_buildScrollable(controller, contentHeight: 200));
 
       expect(controller.position.pixels, 0);

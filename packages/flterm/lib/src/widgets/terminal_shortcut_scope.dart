@@ -7,26 +7,31 @@ import 'package:flutter/widgets.dart';
 import 'terminal_controller.dart';
 
 /// Clear terminal screen and scrollback.
+@internal
 class ClearIntent extends Intent {
   const ClearIntent();
 }
 
 /// Copy the current terminal selection.
+@internal
 class CopyIntent extends Intent {
   const CopyIntent();
 }
 
 /// Paste clipboard content into the terminal.
+@internal
 class PasteIntent extends Intent {
   const PasteIntent();
 }
 
 /// Select all terminal content.
+@internal
 class SelectAllIntent extends Intent {
   const SelectAllIntent();
 }
 
 /// Platform-adaptive default shortcut bindings for terminal actions.
+@internal
 abstract final class TerminalShortcuts {
   static Map<ShortcutActivator, Intent> defaultsFor([
     TargetPlatform? platform,
@@ -72,6 +77,7 @@ abstract final class TerminalShortcuts {
 ///   child: terminalContent,
 /// )
 /// ```
+@internal
 class TerminalShortcutScope extends StatelessWidget {
   final Widget child;
   final VoidCallback? onPaste;

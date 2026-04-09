@@ -1,35 +1,41 @@
 import 'package:flutter/widgets.dart';
-import 'package:libghostty/libghostty.dart' show ScreenMode;
+import 'package:libghostty/libghostty.dart' show TerminalScreen;
 import 'package:meta/meta.dart';
 
-/// Scroll controller that adapts to [ScreenMode].
+/// Scroll controller for [TerminalView].
 ///
-/// In [ScreenMode.primary], behaves like a standard [ScrollController].
-/// In [ScreenMode.alternate], the scroll position accepts all scroll
-/// gestures by using infinite extents.
+/// On the primary screen, scrolls through the scrollback buffer like
+/// a normal [ScrollController]. On the alternate screen (vim, less),
+/// scroll gestures are converted to cursor key input instead.
+///
+/// Created internally by [TerminalView] when not provided. Supply your
+/// own to observe or control the scroll position programmatically.
 ///
 /// ```dart
 /// final scrollController = TerminalScrollController();
 ///
 /// TerminalView(
-///   terminal: terminal,
+///   controller: controller,
 ///   scrollController: scrollController,
-/// )
+/// );
+///
+/// // Jump to the top of scrollback.
+/// scrollController.jumpTo(0);
 /// ```
 class TerminalScrollController extends ScrollController {
-  var _screenMode = ScreenMode.primary;
+  var _activeScreen = TerminalScreen.primary;
 
   TerminalScrollController();
 
-  /// The active screen mode that controls scroll behavior.
-  ScreenMode get screenMode => _screenMode;
+  /// The active terminal screen.
+  TerminalScreen get activeScreen => _activeScreen;
 
   @internal
-  set screenMode(ScreenMode value) {
-    if (_screenMode == value) return;
-    _screenMode = value;
+  set activeScreen(TerminalScreen value) {
+    if (_activeScreen == value) return;
+    _activeScreen = value;
     for (final position in positions) {
-      (position as TerminalScrollPosition).screenMode = value;
+      (position as TerminalScrollPosition).activeScreen = value;
     }
   }
 
@@ -43,37 +49,37 @@ class TerminalScrollController extends ScrollController {
       physics: physics,
       context: context,
       oldPosition: oldPosition,
-      screenMode: _screenMode,
+      activeScreen: _activeScreen,
     );
   }
 }
 
-/// Scroll position that adapts behavior based on [ScreenMode].
+/// Scroll position used by [TerminalScrollController].
 ///
-/// In [ScreenMode.primary], behaves like
-/// [ScrollPositionWithSingleContext]. In [ScreenMode.alternate],
-/// overrides content dimensions to accept all scroll gestures.
+/// Adapts to the active terminal screen. On the alternate screen,
+/// accepts all scroll extents so gestures are never rejected. Saves
+/// and restores the primary screen scroll offset across screen switches.
 class TerminalScrollPosition extends ScrollPositionWithSingleContext {
   double? _savedPixels;
-  ScreenMode _screenMode;
+  TerminalScreen _activeScreen;
 
   TerminalScrollPosition({
     required super.physics,
     required super.context,
-    required ScreenMode screenMode,
+    required TerminalScreen activeScreen,
     super.oldPosition,
-  }) : _screenMode = screenMode;
+  }) : _activeScreen = activeScreen;
 
-  ScreenMode get screenMode => _screenMode;
+  TerminalScreen get activeScreen => _activeScreen;
 
   @internal
-  set screenMode(ScreenMode value) {
-    if (_screenMode == value) return;
+  set activeScreen(TerminalScreen value) {
+    if (_activeScreen == value) return;
     if (value == .alternate && hasPixels) {
       _savedPixels = pixels;
     }
-    _screenMode = value;
-    if (value == ScreenMode.primary && _savedPixels != null) {
+    _activeScreen = value;
+    if (value == .primary && _savedPixels != null) {
       correctPixels(_savedPixels!);
       _savedPixels = null;
     }
@@ -81,9 +87,12 @@ class TerminalScrollPosition extends ScrollPositionWithSingleContext {
 
   @override
   bool applyContentDimensions(double minScrollExtent, double maxScrollExtent) {
-    return switch (_screenMode) {
-      .alternate => super.applyContentDimensions(.negativeInfinity, .infinity),
-      _ => super.applyContentDimensions(minScrollExtent, maxScrollExtent),
-    };
+    if (_activeScreen == .alternate) {
+      return super.applyContentDimensions(
+        double.negativeInfinity,
+        double.infinity,
+      );
+    }
+    return super.applyContentDimensions(minScrollExtent, maxScrollExtent);
   }
 }
