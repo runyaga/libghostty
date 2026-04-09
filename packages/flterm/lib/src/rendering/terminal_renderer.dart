@@ -1,20 +1,51 @@
-import 'dart:async';
-
 import 'package:flutter/rendering.dart';
 import 'package:flutter/widgets.dart';
 import 'package:libghostty/libghostty.dart';
 
 import '../foundation.dart';
-import 'cell_text.dart';
-import 'content_cache.dart';
-import 'content_layer.dart';
-import 'cursor_layer.dart';
-import 'selection_layer.dart';
-import 'style_resolver.dart';
-import 'terminal_paint_context.dart';
+import 'atlas/glyph_atlas.dart';
+import 'atlas/sprite_buffer.dart';
+import 'paint_state.dart';
+import 'painters/background_painter.dart';
+import 'painters/cursor_painter.dart';
+import 'painters/decoration_painter.dart';
+import 'painters/emoji_painter.dart';
+import 'painters/selection_painter.dart';
+import 'painters/terminal_text_painter.dart';
+import 'painters/underline_painter.dart';
+import 'sprite_builder.dart';
+
+/// Pre-fetched cell data at the cursor position.
+///
+/// Snapshot of the cell under the cursor, taken during state sync so the
+/// cursor painter can render the character glyph inside a block cursor
+/// without accessing the terminal during paint.
+class CursorCell {
+  /// Text content of the cell (grapheme cluster).
+  final String content;
+
+  /// Style attributes (bold, italic, blink, inverse, etc.).
+  final Style style;
+
+  /// Whether this is a wide (2-cell) character.
+  final bool wide;
+
+  const CursorCell(this.content, this.style, {required this.wide});
+}
 
 /// Renders a terminal screen with cell backgrounds, styled text, cursors,
 /// and selection overlays.
+///
+/// This is the core rendering widget used internally by [TerminalView].
+/// It owns a [TerminalRenderBox] that orchestrates layout (grid sizing,
+/// terminal resize), state sync (reading cells, building sprites), and
+/// painting (six painters in z-order: background, text, cursor, emoji,
+/// decorations, selection).
+///
+/// Sizing is determined by the parent constraints and cell metrics: the
+/// widget computes how many columns and rows fit, then sizes itself to
+/// exactly that grid. When the grid dimensions change, the terminal is
+/// resized and [onResize] fires.
 ///
 /// ```dart
 /// TerminalRenderer(
@@ -22,17 +53,24 @@ import 'terminal_paint_context.dart';
 ///   theme: TerminalTheme.dark(),
 ///   metrics: measureCellMetrics(fontFamily: 'monospace', fontSize: 14),
 ///   offset: ViewportOffset.zero(),
-///   renderState: controller,
+///   renderObserver: controller,
 /// )
 /// ```
 class TerminalRenderer extends LeafRenderObjectWidget {
   /// The terminal whose screen is rendered.
   final Terminal terminal;
 
-  /// Visual style: colors, cursor, font.
+  /// Visual style applied to the terminal.
+  ///
+  /// When changed, theme colors are pushed to the terminal (foreground,
+  /// background, palette, cursor color), the glyph atlas is updated if
+  /// font properties changed, and a full repaint is scheduled.
   final TerminalTheme theme;
 
-  /// Cell pixel dimensions.
+  /// Cell pixel dimensions used for grid sizing and coordinate conversion.
+  ///
+  /// When changed, the glyph atlas is cleared and layout is recalculated.
+  /// A grid dimension change triggers terminal resize and [onResize].
   final CellMetrics metrics;
 
   /// Scroll offset provided by a [Scrollable] ancestor.
@@ -42,22 +80,22 @@ class TerminalRenderer extends LeafRenderObjectWidget {
   final ViewportOffset offset;
 
   /// Observable state for selection and focus.
-  final TerminalRenderState? renderState;
+  ///
+  /// Listened to by the render box. Changes trigger a repaint to update
+  /// selection highlights and cursor appearance (filled vs hollow).
+  final TerminalRenderObserver renderObserver;
 
   /// Whether the cursor blink is currently in the visible phase.
   ///
-  /// When false, the cursor and blinking text are hidden.
+  /// When false, the cursor and blinking text (SGR 5) are hidden.
+  /// Toggled by a timer in [TerminalView].
   final bool blinkVisible;
 
   /// Called when the terminal grid dimensions change during layout.
-  final ValueChanged<TerminalSize>? onResize;
-
-  /// Called for mode changes, mouse shape changes, terminal responses,
-  /// and cursor changes.
-  final ValueChanged<TerminalEvent>? onEvent;
-
-  /// URI of the hyperlink currently highlighted by Cmd+hover, or null.
-  final String? highlightedHyperlink;
+  ///
+  /// Fires after the terminal has been resized. Use this to notify the
+  /// backend (PTY, SSH) of the new dimensions.
+  final OnResize? onResize;
 
   const TerminalRenderer({
     super.key,
@@ -65,25 +103,21 @@ class TerminalRenderer extends LeafRenderObjectWidget {
     required this.theme,
     required this.metrics,
     required this.offset,
-    this.renderState,
+    required this.renderObserver,
     this.blinkVisible = true,
     this.onResize,
-    this.onEvent,
-    this.highlightedHyperlink,
   });
 
   @override
   TerminalRenderBox createRenderObject(BuildContext context) {
     return TerminalRenderBox(
-      terminal: terminal,
       theme: theme,
-      metrics: metrics,
       offset: offset,
-      renderState: renderState,
-      blinkVisible: blinkVisible,
+      metrics: metrics,
+      terminal: terminal,
       onResize: onResize,
-      onEvent: onEvent,
-      highlightedHyperlink: highlightedHyperlink,
+      blinkVisible: blinkVisible,
+      renderObserver: renderObserver,
     );
   }
 
@@ -97,7 +131,7 @@ class TerminalRenderer extends LeafRenderObjectWidget {
       ..add(
         DiagnosticsProperty<TerminalSelection?>(
           'selection',
-          renderState?.selection,
+          renderObserver.selection,
         ),
       )
       ..add(DiagnosticsProperty<ViewportOffset>('offset', offset))
@@ -121,114 +155,109 @@ class TerminalRenderer extends LeafRenderObjectWidget {
       ..offset = offset
       ..metrics = metrics
       ..onResize = onResize
-      ..onEvent = onEvent
-      ..renderState = renderState
-      ..blinkVisible = blinkVisible
-      ..highlightedHyperlink = highlightedHyperlink;
+      ..renderObserver = renderObserver
+      ..blinkVisible = blinkVisible;
   }
 }
 
-class _ScrollState {
-  var stickToBottom = true;
-  var lastScrollbackLength = 0;
-  var rowOffset = 0;
-}
-
+/// Render object orchestrating terminal layout, state sync, and painting.
+///
+/// Three phases per frame:
+///
+/// 1. **Layout**: computes grid size from constraints and [CellMetrics],
+///    configures the glyph atlas for the current DPR, resizes the terminal
+///    if the grid changed, and updates scroll extents.
+///
+/// 2. **Sync** (start of paint): snapshots terminal cells, resolves colors
+///    (including OSC 10/11 overrides, bold-is-bright, inverse, faint),
+///    builds sprite data for text/backgrounds/decorations, and resolves
+///    the cursor cell glyph.
+///
+/// 3. **Paint**: delegates to six painters in z-order: background, text,
+///    cursor, emoji, decorations, selection. Each painter reads only from
+///    pre-built sprite data with zero terminal access.
+///
+/// Created and managed by [TerminalRenderer]. Not intended for direct use.
 class TerminalRenderBox extends RenderBox {
   Terminal _terminal;
-  TerminalTheme _theme;
-  CellMetrics _metrics;
   ViewportOffset _offset;
-  TerminalRenderState? _renderState;
-  ValueChanged<TerminalSize>? _onResize;
-  ValueChanged<TerminalEvent>? _onEvent;
-  String? _highlightedHyperlink;
-
+  TerminalRenderObserver _renderObserver;
+  OnResize? _onResize;
   var _performingLayout = false;
-  var _needsTerminalSync = false;
+  var _needsContentSync = false;
+  var _needsSpriteRebuild = false;
+  var _stickToBottom = true;
+  var _lastScrollbackRows = 0;
+  var _lastCursor = const Cursor();
+  CursorCell? _lastCursorCell;
 
-  final _scroll = _ScrollState();
+  late final GlyphAtlas _atlas;
+  late final SpriteBuffer _sprites;
+  late final SpriteBuilder _spriteBuilder;
 
-  late final TerminalPaintContext _ctx;
-  late final ContentCache _contentCache;
-  late final ContentLayer _contentLayer;
-  late final CursorLayer _cursorLayer;
-  late final SelectionLayer _selectionLayer;
-
-  late final _lineResolverFn = _lineResolver;
-
-  final _backgroundPaint = Paint();
-
-  StreamSubscription<TerminalEvent>? _eventSub;
+  late final EmojiPainter _emojiPainter;
+  late final CursorPainter _cursorPainter;
+  late final TerminalPaintState _paintState;
+  late final TerminalTextPainter _textPainter;
+  late final SelectionPainter _selectionPainter;
+  late final UnderlinePainter _underlinePainter;
+  late final BackgroundPainter _backgroundPainter;
+  late final DecorationPainter _decorationPainter;
 
   TerminalRenderBox({
     required Terminal terminal,
     required TerminalTheme theme,
     required CellMetrics metrics,
     required ViewportOffset offset,
-    TerminalRenderState? renderState,
+    required TerminalRenderObserver renderObserver,
     bool blinkVisible = true,
-    ValueChanged<TerminalSize>? onResize,
-    ValueChanged<TerminalEvent>? onEvent,
-    String? highlightedHyperlink,
+    OnResize? onResize,
   }) : _terminal = terminal,
-       _theme = theme,
        _offset = offset,
-       _metrics = metrics,
        _onResize = onResize,
-       _onEvent = onEvent,
-       _renderState = renderState,
-       _highlightedHyperlink = highlightedHyperlink {
-    final styles = StyleResolver(theme);
-    _ctx =
-        TerminalPaintContext(
-            styles,
-            metrics,
-            selectionColor: theme.selectionColor,
-          )
-          ..blinkVisible = blinkVisible
-          ..cursor.focused = renderState?.hasFocus ?? true
-          ..selection = renderState?.selection;
-    _contentCache = ContentCache(_ctx);
-    _contentLayer = ContentLayer(_ctx, _contentCache);
-    _cursorLayer = CursorLayer(_ctx);
-    _selectionLayer = SelectionLayer(_ctx);
-    _backgroundPaint.color = theme.background;
+       _renderObserver = renderObserver {
+    _paintState = TerminalPaintState(theme, metrics)
+      ..blinkVisible = blinkVisible
+      ..selection = renderObserver.selection
+      ..cursorFocused = renderObserver.hasFocus;
+    _atlas = GlyphAtlas(
+      fontSize: theme.fontSize,
+      fontWeight: theme.fontWeight,
+      fontFamily: theme.fontFamily,
+      fontFamilyFallback: theme.fontFamilyFallback,
+    );
+
+    _sprites = SpriteBuffer();
+    _spriteBuilder = SpriteBuilder(_atlas, _sprites, _paintState);
+    _backgroundPainter = BackgroundPainter(_paintState, _sprites);
+    _textPainter = TerminalTextPainter(_atlas, _sprites.wide, _sprites.regular);
+    _cursorPainter = CursorPainter(_paintState, _atlas);
+    _emojiPainter = EmojiPainter(_atlas, _sprites);
+    _underlinePainter = UnderlinePainter(_atlas, _sprites);
+    _decorationPainter = DecorationPainter(_sprites);
+    _selectionPainter = SelectionPainter(_paintState);
+
+    _applyThemeColors();
   }
 
-  bool get blinkVisible => _ctx.blinkVisible;
+  bool get blinkVisible => _paintState.blinkVisible;
 
   set blinkVisible(bool value) {
-    if (_ctx.blinkVisible == value) return;
-    _ctx.blinkVisible = value;
-    _contentCache.markBlinkingDirty();
-    if (_ctx.rows > 0) _contentCache.rebuildDirty(_lineResolverFn);
-    markNeedsPaint();
-  }
-
-  set highlightedHyperlink(String? value) {
-    if (_highlightedHyperlink == value) return;
-    _highlightedHyperlink = value;
-    _contentCache.highlightedHyperlink = value;
-    if (_ctx.rows > 0) _contentCache.rebuildDirty(_lineResolverFn);
+    if (_paintState.blinkVisible == value) return;
+    _paintState.blinkVisible = value;
+    _needsSpriteRebuild = true;
     markNeedsPaint();
   }
 
   @override
   bool get isRepaintBoundary => true;
 
-  CellMetrics get metrics => _metrics;
-
   set metrics(CellMetrics value) {
-    if (_metrics == value) return;
-    _metrics = value;
-    _ctx.metrics = value;
-    _contentCache.markAllDirty();
-    _ctx.cursor.invalidateGlyph();
+    if (_paintState.metrics == value) return;
+    _paintState.metrics = value;
+    _atlas.clear();
     markNeedsLayout();
   }
-
-  ViewportOffset get offset => _offset;
 
   set offset(ViewportOffset value) {
     if (_offset == value) return;
@@ -238,72 +267,59 @@ class TerminalRenderBox extends RenderBox {
     markNeedsLayout();
   }
 
-  ValueChanged<TerminalEvent>? get onEvent => _onEvent;
+  set onResize(OnResize? value) => _onResize = value;
 
-  set onEvent(ValueChanged<TerminalEvent>? value) {
-    if (_onEvent == value) return;
-    _onEvent = value;
+  set renderObserver(TerminalRenderObserver value) {
+    if (_renderObserver == value) return;
+    if (attached) _renderObserver.removeListener(_onRenderObserverChanged);
+    _renderObserver = value;
+    if (attached) _renderObserver.addListener(_onRenderObserverChanged);
+    _onRenderObserverChanged();
   }
-
-  ValueChanged<TerminalSize>? get onResize => _onResize;
-
-  set onResize(ValueChanged<TerminalSize>? value) {
-    if (_onResize == value) return;
-    _onResize = value;
-  }
-
-  TerminalRenderState? get renderState => _renderState;
-
-  set renderState(TerminalRenderState? value) {
-    if (_renderState == value) return;
-    if (attached) _renderState?.removeListener(_onRenderStateChanged);
-    _renderState = value;
-    if (attached) _renderState?.addListener(_onRenderStateChanged);
-    _onRenderStateChanged();
-  }
-
-  TerminalSelection? get selection => _ctx.selection;
-
-  Terminal get terminal => _terminal;
 
   set terminal(Terminal value) {
     if (_terminal == value) return;
-    _eventSub?.cancel().ignore();
+    if (attached) _terminal.removeListener(_onTerminalChanged);
     _terminal = value;
-    _setupSubscriptions();
-    _contentCache.markAllDirty();
+    if (attached) _terminal.addListener(_onTerminalChanged);
+    _applyThemeColors();
+    _needsContentSync = true;
     markNeedsLayout();
   }
 
-  TerminalTheme get theme => _theme;
+  TerminalTheme get theme => _paintState.theme;
 
+  /// Updates the theme, clearing the atlas only if font properties changed.
+  ///
+  /// Color-only changes (palette, foreground, background) use markNeedsPaint
+  /// which repaints with the existing atlas. Font changes (size, weight,
+  /// family) use markNeedsLayout which reconfigures the atlas, re-measures
+  /// the grid, and pre-seeds glyphs.
   set theme(TerminalTheme value) {
-    if (_theme == value) return;
-    _theme = value;
-    _ctx.styles = StyleResolver(value);
-    _ctx.selectionColor = value.selectionColor;
-    _contentCache.markAllDirty();
-    _ctx.cursor.invalidateGlyph();
-    _backgroundPaint.color = value.background;
-    markNeedsLayout();
-  }
+    if (_paintState.theme == value) return;
+    final fontChanged = _atlas.updateFont(
+      fontSize: value.fontSize,
+      fontWeight: value.fontWeight,
+      fontFamily: value.fontFamily,
+      fontFamilyFallback: value.fontFamilyFallback,
+    );
+    _paintState.updateTheme(value);
+    _applyThemeColors();
+    _needsContentSync = true;
 
-  Line? get _cursorLine {
-    if (_scroll.rowOffset > 0) return null;
-    final row = _terminal.cursor.row;
-    if (row < 0 || row >= _ctx.rows) return null;
-    return _terminal.screen.lineAt(row);
+    if (fontChanged) {
+      markNeedsLayout();
+    } else {
+      markNeedsPaint();
+    }
   }
-
-  double get _scrollMaxExtent =>
-      _terminal.scrollback.length * _metrics.cellHeight;
 
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
     _offset.addListener(_onScroll);
-    _renderState?.addListener(_onRenderStateChanged);
-    _setupSubscriptions();
+    _renderObserver.addListener(_onRenderObserverChanged);
+    _terminal.addListener(_onTerminalChanged);
     markNeedsLayout();
   }
 
@@ -311,37 +327,39 @@ class TerminalRenderBox extends RenderBox {
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties
-      ..add(IntProperty('cols', _ctx.cols))
-      ..add(IntProperty('rows', _ctx.rows))
-      ..add(DiagnosticsProperty<TerminalTheme>('theme', _theme))
-      ..add(DiagnosticsProperty<CellMetrics>('metrics', _metrics))
+      ..add(IntProperty('cols', _paintState.cols))
+      ..add(IntProperty('rows', _paintState.rows))
+      ..add(DiagnosticsProperty<TerminalTheme>('theme', _paintState.theme))
+      ..add(DiagnosticsProperty<CellMetrics>('metrics', _paintState.metrics))
       ..add(
-        DiagnosticsProperty<TerminalSelection?>('selection', _ctx.selection),
+        DiagnosticsProperty<TerminalSelection?>(
+          'selection',
+          _paintState.selection,
+        ),
       )
       ..add(
         FlagProperty(
           'blinkVisible',
-          value: blinkVisible,
+          value: _paintState.blinkVisible,
           ifTrue: 'cursor visible',
         ),
       )
       ..add(
-        FlagProperty('focused', value: _ctx.cursor.focused, ifTrue: 'focused'),
-      )
-      ..add(
-        DiagnosticsProperty<TerminalRenderState?>('renderState', _renderState),
+        DiagnosticsProperty<TerminalRenderObserver?>(
+          'renderObserver',
+          _renderObserver,
+        ),
       );
   }
 
   @override
   void detach() {
     _offset.removeListener(_onScroll);
-    _renderState?.removeListener(_onRenderStateChanged);
-    _eventSub?.cancel().ignore();
-    _contentCache.dispose();
-    _ctx.cursor.dispose();
-    _ctx.rows = 0;
-    _ctx.cols = 0;
+    _renderObserver.removeListener(_onRenderObserverChanged);
+    _terminal.removeListener(_onTerminalChanged);
+    _atlas.dispose();
+    _paintState.rows = 0;
+    _paintState.cols = 0;
     super.detach();
   }
 
@@ -353,245 +371,290 @@ class TerminalRenderBox extends RenderBox {
     _syncTerminalState();
 
     final canvas = context.canvas;
-    canvas.drawRect(offset & size, _backgroundPaint);
-    _contentLayer.paint(canvas, offset);
-    _cursorLayer.paint(canvas, offset);
-    _selectionLayer.paint(canvas, offset);
+
+    canvas.save();
+    canvas.translate(offset.dx, offset.dy);
+    _backgroundPainter.paint(canvas);
+    // Underlines drawn before text so descender glyphs cover the underline
+    // at intersections.
+    _underlinePainter.paint(canvas);
+    _textPainter.paint(canvas);
+    _cursorPainter.paint(canvas);
+    _emojiPainter.paint(canvas);
+    // Strikethrough and overline drawn after text so strikethrough visibly
+    // crosses through glyphs.
+    _decorationPainter.paint(canvas);
+    _selectionPainter.paint(canvas);
+    canvas.restore();
   }
 
   @override
   void performLayout() {
     _performingLayout = true;
 
-    final maxW = constraints.maxWidth.isFinite ? constraints.maxWidth : 0.0;
-    final maxH = constraints.maxHeight.isFinite ? constraints.maxHeight : 0.0;
-    final (newCols, newRows) = _metrics.gridSize(maxW, maxH);
+    final maxW = constraints.hasBoundedWidth ? constraints.maxWidth : 0.0;
+    final maxH = constraints.hasBoundedHeight ? constraints.maxHeight : 0.0;
+    final (newCols, newRows) = _paintState.metrics.gridSize(maxW, maxH);
 
     size = constraints.constrain(
-      Size(newCols * _metrics.cellWidth, newRows * _metrics.cellHeight),
+      Size(
+        newCols * _paintState.metrics.cellWidth,
+        newRows * _paintState.metrics.cellHeight,
+      ),
     );
 
-    if (newCols != _ctx.cols || newRows != _ctx.rows) {
-      _ctx.cols = newCols;
-      _ctx.rows = newRows;
-      _contentCache.updateGridSize();
+    final dpr =
+        WidgetsBinding.instance.platformDispatcher.views.first.devicePixelRatio;
+    final atlasReconfigured = _atlas.configure(
+      dpr: dpr,
+      metrics: _paintState.metrics,
+    );
+
+    final gridChanged =
+        newCols != _paintState.cols || newRows != _paintState.rows;
+    if (gridChanged) {
+      _paintState.cols = newCols;
+      _paintState.rows = newRows;
+      _sprites.resize(newRows * newCols);
       if (newCols > 0 && newRows > 0) {
-        _terminal.resize(cols: newCols, rows: newRows);
-        _onResize?.call(TerminalSize(cols: newCols, rows: newRows));
+        _terminal.resize(
+          cols: newCols,
+          rows: newRows,
+          cellWidthPx: _paintState.metrics.cellWidth.round(),
+          cellHeightPx: _paintState.metrics.cellHeight.round(),
+        );
+        _onResize?.call(newCols, newRows);
       }
     }
 
     _syncScrollLayout();
-    _ctx.cursor.scrolling = _scroll.rowOffset > 0;
 
-    if (_ctx.rows > 0) {
-      _syncTerminalState();
-      _updateCursor(_terminal.cursor, _cursorLine);
-      _contentCache.rebuildDirty(_lineResolverFn);
-    }
+    // Only rebuild sprites when grid dimensions or atlas changed.
+    // Sub-cell pixel resize steps skip the expensive sprite build.
+    if (gridChanged || atlasReconfigured) _markTerminalDirty();
 
-    markNeedsPaint();
     _performingLayout = false;
   }
 
-  int _computeScrollRowOffset() {
-    final scrollbackLen = _terminal.scrollback.length;
-    if (scrollbackLen == 0 || _metrics.cellHeight <= 0) return 0;
-    final maxExtent = _scrollMaxExtent;
-    if (maxExtent <= 0) return 0;
-    final pixels = _offset.pixels.clamp(0.0, maxExtent);
-    return scrollbackLen - (pixels / _metrics.cellHeight).floor();
+  void _applyThemeColors() {
+    _terminal.foreground = _paintState.theme.foreground.toRgbColor();
+    _terminal.background = _paintState.theme.background.toRgbColor();
+    _terminal.cursorColor = _paintState.theme.cursor.color?.toRgbColor();
+    _terminal.palette = [
+      for (var i = 0; i < 256; i++) _paintState.theme.palette[i].toRgbColor(),
+    ];
   }
 
-  bool _isCursorUnchanged(Cursor cursor, String content, {required bool wide}) {
-    final cur = _ctx.cursor;
-    return cursor.row == cur.row &&
-        cursor.col == cur.col &&
-        cursor.shape == cur.shape &&
-        cursor.visible == cur.visible &&
-        wide == cur.wide &&
-        content == cur.cellContent &&
-        cur.glyph != null;
-  }
-
-  Line _lineResolver(int row) {
-    return _scroll.rowOffset > 0
-        ? _scrollLineAt(row)
-        : _terminal.screen.lineAt(row);
-  }
-
-  void _onRenderStateChanged() {
-    var needsPaint = false;
-
-    final newSelection = _renderState?.selection;
-    if (newSelection != _ctx.selection) {
-      _ctx.selection = newSelection;
-      needsPaint = true;
-    }
-
-    final newFocused = _renderState?.hasFocus ?? true;
-    if (newFocused != _ctx.cursor.focused) {
-      _ctx.cursor.focused = newFocused;
-      _ctx.cursor.invalidateGlyph();
-      _needsTerminalSync = true;
-      needsPaint = true;
-    }
-
-    if (needsPaint) markNeedsPaint();
-  }
-
-  void _onScroll() {
-    if (_ctx.rows == 0) return;
-    final delta = _processScroll();
-    _ctx.cursor.scrolling = _scroll.rowOffset > 0;
-    _ctx.scrollbackLength = _scroll.lastScrollbackLength;
-    _ctx.rowOffset = _scroll.rowOffset;
-
-    if (delta == 0) {
-      markNeedsPaint();
-      return;
-    }
-
-    _contentCache.scroll(delta);
-    _updateCursor(_terminal.cursor, _cursorLine);
-    _contentCache.rebuildDirty(_lineResolverFn);
+  void _markTerminalDirty() {
+    _needsContentSync = true;
     markNeedsPaint();
   }
 
+  void _onRenderObserverChanged() {
+    _paintState.selection = _renderObserver.selection;
+    _paintState.cursorFocused = _renderObserver.hasFocus;
+    _resolveCursorGlyph();
+    markNeedsPaint();
+  }
+
+  void _onScroll() {
+    if (_performingLayout) return;
+    if (_paintState.rows == 0 || _paintState.metrics.cellHeight <= 0) return;
+
+    final scrollbar = _terminal.scrollbar;
+    final scrollbackLen = scrollbar.total - scrollbar.visible;
+    if (scrollbackLen <= 0) return;
+
+    final cellHeight = _paintState.metrics.cellHeight;
+    final maxExtent = scrollbackLen * cellHeight;
+    final pixels = _offset.pixels.clamp(0.0, maxExtent);
+
+    _stickToBottom = maxExtent <= 0 || pixels >= maxExtent - cellHeight;
+
+    final targetOffset = (pixels / cellHeight).floor();
+    final delta = targetOffset - scrollbar.offset;
+
+    if (delta == 0) return;
+
+    _terminal.scrollViewport(delta);
+    _markTerminalDirty();
+  }
+
+  // Handles terminal change notifications.
+  //
+  // When scrollback length changes, a layout pass is needed because scroll
+  // extents must be recalculated. For normal output (same scrollback
+  // length), only a repaint is needed.
   void _onTerminalChanged() {
-    if (_ctx.rows == 0) return;
-    _needsTerminalSync = true;
+    if (_paintState.rows == 0 || _performingLayout) return;
 
-    final scrollbackLen = _terminal.scrollback.length;
-    if (scrollbackLen != _scroll.lastScrollbackLength) {
-      _scroll.lastScrollbackLength = scrollbackLen;
-      _contentCache.markAllDirty();
-      if (!_performingLayout) {
-        markNeedsLayout();
-        return;
-      }
+    if (_terminal.scrollbackRows != _lastScrollbackRows) {
+      _needsContentSync = true;
+      markNeedsLayout();
+      return;
     }
 
-    if (!_performingLayout) markNeedsPaint();
+    _markTerminalDirty();
   }
 
-  int _processScroll() {
-    final maxExtent = _scrollMaxExtent;
-    _scroll.stickToBottom = maxExtent <= 0 || _offset.pixels >= maxExtent - 1.0;
-    final newRow = _computeScrollRowOffset();
-    final delta = newRow - _scroll.rowOffset;
-    _scroll.rowOffset = newRow;
-    return delta;
+  void _resolveCursor(RenderState renderState, Scrollbar scrollbar) {
+    final cursor = renderState.cursor;
+    final scrollbackLen = scrollbar.total - scrollbar.visible;
+    final inViewport =
+        cursor.visible &&
+        (scrollbackLen <= 0 || scrollbar.offset >= scrollbackLen) &&
+        cursor.row >= 0 &&
+        cursor.row < _paintState.rows &&
+        cursor.col >= 0 &&
+        cursor.col < _paintState.cols;
+
+    if (!inViewport) {
+      _lastCursor = cursor;
+      _lastCursorCell = null;
+      _paintState.cursor = cursor.copyWith(visible: false);
+      _paintState.cursorWide = false;
+      _paintState.cursorGlyphEntry = null;
+      return;
+    }
+
+    var col = cursor.col;
+    if (cursor.wideTail && col > 0) col -= 1;
+    final effectiveCursor = col != cursor.col
+        ? cursor.copyWith(col: col)
+        : cursor;
+    final ref = _terminal.gridRefAt(col: col, row: cursor.row);
+    final cursorCell = CursorCell(ref.content, ref.style, wide: ref.isWide);
+    ref.dispose();
+
+    _lastCursor = effectiveCursor;
+    _lastCursorCell = cursorCell;
+    _paintState.cursor = effectiveCursor;
+    _paintState.cursorWide = cursorCell.wide;
+    _resolveCursorGlyph();
   }
 
-  void _rebuildCursorGlyph(Cell? cell, String content) {
-    final cur = _ctx.cursor;
-    cur.invalidateGlyph();
+  // Builds the block cursor glyph from cached cursor cell data.
+  // Called after cursor resolution and on focus changes.
+  void _resolveCursorGlyph() {
+    _paintState.cursorGlyphEntry = null;
+    final cell = _lastCursorCell;
+    if (cell == null ||
+        !_paintState.cursorFocused ||
+        _lastCursor.shape != CursorShape.block) {
+      return;
+    }
+    final style = cell.style;
+    if (cell.content.isEmpty ||
+        style.invisible ||
+        (style.blink && !_paintState.blinkVisible)) {
+      return;
+    }
+    _paintState.cursorGlyphEntry = _atlas.add((
+      text: cell.content,
+      bold: style.bold,
+      italic: style.italic,
+    ), span: cell.wide ? 2 : 1);
 
-    if (cur.scrolling || !cur.focused) return;
-    if (cur.shape != CursorShape.block) return;
-    if (content == ' ' || cell == null) return;
-    if (cur.row < 0 || cur.row >= _ctx.rows) return;
-    if (cur.col < 0 || cur.col >= _ctx.cols) return;
-
-    final colors = _ctx.styles.resolveColors(cell);
-    final (paragraph, offset) = buildGlyphParagraph(
-      _ctx.styles,
-      _ctx.metrics,
-      cell,
-      content,
-      colors.$2,
-      wide: cell.isWide,
+    // The glyph shows in the terminal background color so it contrasts
+    // with the cursor (which uses the terminal foreground / cursor color).
+    // This matches standard terminal behavior: the block cursor always
+    // inverts to bg/fg regardless of the cell's own styling.
+    _paintState.cursorGlyphPaint.colorFilter = ColorFilter.mode(
+      Color(_paintState.terminalBackgroundArgb),
+      BlendMode.modulate,
     );
-    cur.glyph = paragraph;
-    cur.glyphOffset = offset;
   }
 
-  Cell? _resolveCursorCell(Cursor cursor, Line? cursorLine) {
-    if (cursorLine == null) return null;
-    if (!cursor.visible) return null;
-    if (cursor.row < 0 || cursor.row >= _ctx.rows) return null;
-    if (cursor.col < 0 || cursor.col >= _ctx.cols) return null;
-
-    final cell = cursorLine.cellAt(cursor.col);
-    _ctx.cursor.color =
-        _ctx.styles.theme.cursor.color ??
-        _ctx.styles.theme.resolveColor(cell.foreground, isForeground: true);
-    return cell;
-  }
-
-  Line _scrollLineAt(int viewportRow) {
-    final scrollbackLen = _terminal.scrollback.length;
-    final absRow = scrollbackLen - _scroll.rowOffset + viewportRow;
-    if (absRow < 0) return const Line([]);
-    if (absRow < scrollbackLen) {
-      return _terminal.scrollback.lineAt(absRow);
-    }
-    final screenRow = absRow - scrollbackLen;
-    return screenRow < _terminal.screen.rows
-        ? _terminal.screen.lineAt(screenRow)
-        : const Line([]);
-  }
-
-  void _setupSubscriptions() {
-    _eventSub = _terminal.onEvent.listen((event) {
-      switch (event) {
-        case ScreenChanged():
-          _onTerminalChanged();
-        case CursorChanged():
-          _needsTerminalSync = true;
-          markNeedsPaint();
-          _onEvent?.call(event);
-        default:
-          _onEvent?.call(event);
-      }
-    });
-  }
-
+  // Maintains scroll position and content dimensions.
+  //
+  // "Stick to bottom" keeps the viewport pinned to the latest output,
+  // which is the normal mode when the user hasn't scrolled up. Once the
+  // user scrolls away from the bottom, new output no longer forces the
+  // viewport down. Stick-to-bottom re-engages when the user scrolls
+  // back to within one cell of the bottom edge.
   void _syncScrollLayout() {
-    final maxExtent = _scrollMaxExtent;
-    if (_scroll.stickToBottom && maxExtent > 0) {
+    _offset.applyViewportDimension(size.height);
+
+    if (_terminal.activeScreen == .alternate) {
+      _offset.applyContentDimensions(0, 0);
+      _lastScrollbackRows = 0;
+      _stickToBottom = true;
+      return;
+    }
+
+    final scrollbar = _terminal.scrollbar;
+    final scrollbackLen = scrollbar.total - scrollbar.visible;
+    final cellHeight = _paintState.metrics.cellHeight;
+    final maxExtent = scrollbackLen * cellHeight;
+
+    // Detect if the terminal was scrolled to bottom externally.
+    if (!_stickToBottom &&
+        scrollbackLen > 0 &&
+        scrollbar.offset >= scrollbackLen) {
+      _stickToBottom = true;
+    }
+
+    if (_stickToBottom && maxExtent > 0) {
       final correction = maxExtent - _offset.pixels;
       if (correction.abs() > 0.01) _offset.correctBy(correction);
+      if (scrollbar.offset < scrollbackLen) _terminal.scrollToBottom();
     }
-    _offset.applyViewportDimension(size.height);
     _offset.applyContentDimensions(0, maxExtent);
-    _scroll.lastScrollbackLength = _terminal.scrollback.length;
-    _scroll.rowOffset = _computeScrollRowOffset();
-    _ctx.scrollbackLength = _scroll.lastScrollbackLength;
-    _ctx.rowOffset = _scroll.rowOffset;
+    _lastScrollbackRows = scrollbackLen;
+    _stickToBottom = maxExtent <= 0 || _offset.pixels >= maxExtent - cellHeight;
   }
 
+  // Reads terminal state and builds sprites for the current frame.
+  //
+  // Called at the start of paint(). After this method returns, all painters
+  // read only from pre-built sprite data with zero terminal access.
+  //
+  // Content sync: snapshots the terminal, reads colors, builds sprites,
+  // resolves cursor. Triggered by terminal output, scroll, theme, or resize.
+  //
+  // Sprite-only rebuild: re-iterates the existing snapshot to rebuild
+  // sprites without FFI overhead. Triggered by blink visibility changes
+  // when no content change is pending.
   void _syncTerminalState() {
-    if (!_needsTerminalSync || _ctx.rows == 0) return;
-    _needsTerminalSync = false;
+    if (_paintState.rows == 0) return;
 
-    final screen = _terminal.screen;
-    final rowOffset = _scroll.rowOffset;
+    if (_needsContentSync) {
+      _needsContentSync = false;
+      _needsSpriteRebuild = false;
 
-    _contentCache.detectDirty(screen, rowOffset: rowOffset > 0 ? rowOffset : 0);
-    _updateCursor(_terminal.cursor, _cursorLine);
-    _contentCache.rebuildDirty(_lineResolverFn);
-    _terminal.clearContentChanges();
+      final renderState = _terminal.renderState;
+      renderState.update();
+
+      final scrollbar = _terminal.scrollbar;
+      _paintState.viewportOffset = scrollbar.offset;
+
+      _paintState.terminalForegroundArgb =
+          _terminal.foreground?.toArgb32 ??
+          _paintState.theme.foreground.toARGB32();
+      _paintState.terminalBackgroundArgb =
+          _terminal.background?.toArgb32 ??
+          _paintState.theme.background.toARGB32();
+      _paintState.cursorColorArgb =
+          _terminal.cursorColor?.toArgb32 ?? _paintState.terminalForegroundArgb;
+
+      _spriteBuilder.build(renderState);
+      renderState.markClean();
+
+      _resolveCursor(renderState, scrollbar);
+    } else if (_needsSpriteRebuild) {
+      _needsSpriteRebuild = false;
+
+      final renderState = _terminal.renderState;
+      renderState.resetIteration();
+      _spriteBuilder.build(renderState);
+    }
   }
+}
 
-  void _updateCursor(Cursor cursor, Line? cursorLine) {
-    final cell = _resolveCursorCell(cursor, cursorLine);
-    final newContent = cell != null
-        ? cellText(cell, blinkVisible: _ctx.blinkVisible)
-        : ' ';
-    final wide = cell?.isWide ?? false;
-
-    if (_isCursorUnchanged(cursor, newContent, wide: wide)) return;
-
-    final cur = _ctx.cursor;
-    cur.row = cursor.row;
-    cur.col = cursor.col;
-    cur.shape = cursor.shape;
-    cur.visible = cursor.visible;
-    cur.wide = wide;
-    cur.cellContent = newContent;
-
-    _rebuildCursorGlyph(cell, newContent);
-  }
+extension on Color {
+  RgbColor toRgbColor() => RgbColor(
+    (r * 255.0).round().clamp(0, 255),
+    (g * 255.0).round().clamp(0, 255),
+    (b * 255.0).round().clamp(0, 255),
+  );
 }
