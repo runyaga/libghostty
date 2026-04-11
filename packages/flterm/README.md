@@ -1,86 +1,104 @@
 # flterm
 
-A high-performance terminal emulator renderer for Flutter, powered by
-[Ghostty](https://ghostty.org)'s virtual terminal engine
-([libghostty-vt](https://github.com/elias8/libghostty)).
+[![pub package](https://img.shields.io/pub/v/flterm)](https://pub.dev/packages/flterm)
+[![GitHub Actions](https://github.com/elias8/libghostty/actions/workflows/build.yml/badge.svg)](https://github.com/elias8/libghostty/actions)
+
+Flutter terminal widget on top of [Ghostty](https://ghostty.org)'s
+libghostty-vt engine.
 
 | Android | iOS | Linux | macOS | Web | Windows |
 |:-------:|:---:|:-----:|:-----:|:---:|:-------:|
 |    ✅    |  ✅  |   ✅   |   ✅   |  ✅  |    ✅    |
 
-> [!CAUTION]
-> This package is under active development. The API is unstable and breaking
-> changes are expected between releases.
+## Overview
 
-## Features
-
-- Three-layer rendering: content, cursor, and selection with per-row caching
-- Wide character support (CJK, emoji) with correct selection snapping
-- Multi-tap selection: word (double-click), line (triple-click), block (Alt+drag)
-- Platform-adaptive shortcuts: copy, paste, select all, clear
-- Soft keyboard input for mobile platforms
-- Scrollback with smooth scrolling and alternate screen support
-- Configurable theming: colors, cursor shape, hyperlink styles, font
-- Runs on Android, iOS, Linux, macOS, Web, and Windows
+- Adapts to the host: mouse and keyboard on desktop, touch and soft
+  keyboard on mobile, both on web.
+- `TerminalController` owns the terminal and connects to a backend
+  (PTY, SSH, socket) via output/resize/bell/title callbacks. Helpers
+  for I/O, selection, focus, scrolling, paste, and mode toggling.
+- Drag, double-click, triple-click, and Alt+drag selection over wide
+  characters (CJK, emoji, VS16, combining marks) with cell-snapped
+  boundaries.
+- Built-in copy, paste, select all, and clear shortcuts with
+  platform-aware defaults. Extend or replace with any Flutter
+  `Intent`.
+- Themes for ANSI 16, 256-color, and truecolor palettes; cursor;
+  hyperlinks; fonts. Immutable and `lerp`-able.
+- OSC 8 hyperlinks with idle and highlighted styles.
 
 ## Getting started
 
-Add `flterm` and `libghostty` to your `pubspec.yaml`:
-
 ```yaml
 dependencies:
-  flterm: ^0.0.1-dev.1
-  libghostty: ^0.0.4
+  flterm: ^0.0.1
 ```
 
-For web, call `initializeForWeb` before using the terminal:
+On web, initialize the wasm module once before mounting any terminal:
 
 ```dart
-import 'package:libghostty/libghostty.dart';
+import 'package:flterm/flterm.dart';
+import 'package:flutter/foundation.dart';
 
 if (kIsWeb) {
-  await initializeForWeb(Uri.parse('path/to/libghostty.wasm'));
+  await initializeForWeb(Uri.parse('assets/libghostty.wasm'));
 }
 ```
 
 ## Usage
 
-Minimal setup:
+A `TerminalController` owns the terminal and talks to your I/O. A
+`TerminalView` renders it.
 
 ```dart
 import 'package:flterm/flterm.dart';
-import 'package:libghostty/libghostty.dart';
 
-final terminal = Terminal(cols: 80, rows: 24);
+final controller = TerminalController()
+  ..onOutput = (bytes) => pty.write(bytes)
+  ..onResize = (size) => pty.resize(size.cols, size.rows)
+  ..onBell = playSound;
 
-TerminalView(terminal: terminal)
-```
-
-With PTY integration:
-
-```dart
-TerminalView(
-  terminal: terminal,
-  onOutput: (bytes) => pty.write(bytes),
-  onResize: (size) => pty.resize(size.cols, size.rows),
-)
-```
-
-With programmatic control:
-
-```dart
-final controller = TerminalController();
+ptyOutputStream.listen(controller.write);
 
 TerminalView(
-  terminal: terminal,
   controller: controller,
+  theme: TerminalTheme.dark(),
 );
+```
 
+The same controller drives the terminal programmatically:
+
+```dart
+// I/O
 controller.sendText('ls -la\n');
+
+// Selection
 controller.selectAll();
 print(controller.selectedText);
+
+// Clipboard
+controller.paste('hello');
+
+// Reset
+controller.clear();
+```
+
+Custom themes are constructed directly:
+
+```dart
+TerminalView(
+  controller: controller,
+  theme: TerminalTheme(
+    foreground: const Color(0xFFC5C8C6),
+    background: const Color(0xFF1D1F21),
+    ansiColors: const [/* 16 ANSI colors */],
+    fontFamily: 'JetBrains Mono',
+    fontSize: 14,
+    cursor: const CursorTheme(shape: CursorShape.bar),
+  ),
+);
 ```
 
 ## License
 
-MIT. See [LICENSE](LICENSE) for details.
+MIT. See [LICENSE](LICENSE).
