@@ -1,52 +1,52 @@
 import 'dart:convert';
-import 'dart:ffi' as ffi;
+import 'dart:ffi';
 import 'dart:typed_data';
 
 import 'package:ffi/ffi.dart';
 
-import '../../ffi/libghostty.g.dart' as native;
-import '../../ffi/libghostty_enums.g.dart' as native;
+import '../../ffi/libghostty.g.dart'
+    as native
+    show MouseEncoderSize, SgrAttribute, String, Style;
+import '../../ffi/libghostty.g.dart'
+    hide MouseEncoderSize, SgrAttribute, String, Style;
 import '../../ffi/libghostty_enums.g.dart';
 import '../interface.dart';
 
-typedef _StringBuffer = ({
-  ffi.Pointer<native.String> str,
-  ffi.Pointer<ffi.Uint8> data,
-});
+typedef _StringBuffer = ({Pointer<native.String> str, Pointer<Uint8> data});
 
 final GhosttyBindings bindings = NativeBindings();
 
 Future<void> initializeForWeb(Uri wasmUri) async {}
 
 class NativeBindings implements GhosttyBindings {
-  final _utf8Ptrs = <int, ffi.Pointer<ffi.Char>>{};
-  final _callables = <int, Map<TerminalOption, ffi.NativeCallable>>{};
+  final _utf8Ptrs = <int, Pointer<Char>>{};
+  final _callables = <int, Map<TerminalOption, NativeCallable>>{};
   final _stringBuffers = <int, Map<TerminalOption, _StringBuffer>>{};
 
-  final _outU8 = calloc<ffi.Uint8>();
-  final _outU16 = calloc<ffi.Uint16>();
-  final _outU32 = calloc<ffi.Uint32>();
-  final _outU64 = calloc<ffi.Uint64>();
-  final _outI32 = calloc<ffi.Int32>();
-  final _outBool = calloc<ffi.Bool>();
+  final _outU8 = calloc<Uint8>();
+  final _outU16 = calloc<Uint16>();
+  final _outU32 = calloc<Uint32>();
+  final _outU64 = calloc<Uint64>();
+  final _outI32 = calloc<Int32>();
+  final _outBool = calloc<Bool>();
   final _outStyle = calloc<native.Style>();
-  final _outScrollbar = calloc<native.TerminalScrollbar>();
-  final _outColors = calloc<native.RenderStateColors>();
-  final _outSize = calloc<ffi.Size>();
+  final _outScrollbar = calloc<TerminalScrollbar>();
+  final _outColors = calloc<RenderStateColors>();
+  final _outSize = calloc<Size>();
   final _outGhosttyString = calloc<native.String>();
-  final _outColorRgb = calloc<native.ColorRgb>();
-  final _graphemeBuf = calloc<ffi.Uint32>(32);
+  final _outColorRgb = calloc<ColorRgb>();
+  final _graphemeBuf = calloc<Uint32>(32);
 
   NativeBindings() {
-    _outColors.ref.size = ffi.sizeOf<native.RenderStateColors>();
-    _outStyle.ref.size = ffi.sizeOf<native.Style>();
+    _outColors.ref.size = sizeOf<RenderStateColors>();
+    _outStyle.ref.size = sizeOf<native.Style>();
   }
 
   @override
   CResult<int> keyEventNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.KeyEventImpl>>();
-      final result = native.ghostty_key_event_new(ffi.nullptr, ptr);
+      final ptr = arena<Pointer<KeyEventImpl>>();
+      final result = ghostty_key_event_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
@@ -54,130 +54,117 @@ class NativeBindings implements GhosttyBindings {
   @override
   void keyEventFree(int handle) {
     _freeUtf8(handle);
-    native.ghostty_key_event_free(ffi.Pointer.fromAddress(handle));
+    ghostty_key_event_free(Pointer.fromAddress(handle));
   }
 
   @override
   void keyEventSetAction(int handle, KeyAction action) {
-    native.ghostty_key_event_set_action(
-      ffi.Pointer.fromAddress(handle),
-      action,
-    );
+    ghostty_key_event_set_action(Pointer.fromAddress(handle), action);
   }
 
   @override
   KeyAction keyEventGetAction(int handle) {
-    return native.ghostty_key_event_get_action(ffi.Pointer.fromAddress(handle));
+    return ghostty_key_event_get_action(Pointer.fromAddress(handle));
   }
 
   @override
   void keyEventSetKey(int handle, Key key) {
-    native.ghostty_key_event_set_key(ffi.Pointer.fromAddress(handle), key);
+    ghostty_key_event_set_key(Pointer.fromAddress(handle), key);
   }
 
   @override
   Key keyEventGetKey(int handle) {
-    return native.ghostty_key_event_get_key(ffi.Pointer.fromAddress(handle));
+    return ghostty_key_event_get_key(Pointer.fromAddress(handle));
   }
 
   @override
   void keyEventSetMods(int handle, int mods) {
-    native.ghostty_key_event_set_mods(ffi.Pointer.fromAddress(handle), mods);
+    ghostty_key_event_set_mods(Pointer.fromAddress(handle), mods);
   }
 
   @override
   int keyEventGetMods(int handle) {
-    return native.ghostty_key_event_get_mods(ffi.Pointer.fromAddress(handle));
+    return ghostty_key_event_get_mods(Pointer.fromAddress(handle));
   }
 
   @override
   void keyEventSetConsumedMods(int handle, int mods) {
-    native.ghostty_key_event_set_consumed_mods(
-      ffi.Pointer.fromAddress(handle),
-      mods,
-    );
+    ghostty_key_event_set_consumed_mods(Pointer.fromAddress(handle), mods);
   }
 
   @override
   int keyEventGetConsumedMods(int handle) {
-    return native.ghostty_key_event_get_consumed_mods(
-      ffi.Pointer.fromAddress(handle),
-    );
+    return ghostty_key_event_get_consumed_mods(Pointer.fromAddress(handle));
   }
 
   @override
   void keyEventSetComposing(int handle, {required bool composing}) {
-    native.ghostty_key_event_set_composing(
-      ffi.Pointer.fromAddress(handle),
-      composing,
-    );
+    ghostty_key_event_set_composing(Pointer.fromAddress(handle), composing);
   }
 
   @override
   bool keyEventGetComposing(int handle) {
-    return native.ghostty_key_event_get_composing(
-      ffi.Pointer.fromAddress(handle),
-    );
+    return ghostty_key_event_get_composing(Pointer.fromAddress(handle));
   }
 
   @override
   void keyEventSetUtf8(int handle, String? text) {
     _freeUtf8(handle);
-    final ptr = ffi.Pointer<native.KeyEventImpl>.fromAddress(handle);
+    final ptr = Pointer<KeyEventImpl>.fromAddress(handle);
     if (text == null) {
-      native.ghostty_key_event_set_utf8(ptr, ffi.nullptr, 0);
+      ghostty_key_event_set_utf8(ptr, nullptr, 0);
       return;
     }
     final encoded = utf8.encode(text);
-    final charPtr = calloc<ffi.Char>(encoded.length);
-    final dst = charPtr.cast<ffi.Uint8>().asTypedList(encoded.length);
+    final charPtr = calloc<Char>(encoded.length);
+    final dst = charPtr.cast<Uint8>().asTypedList(encoded.length);
     dst.setAll(0, encoded);
     _utf8Ptrs[handle] = charPtr;
-    native.ghostty_key_event_set_utf8(ptr, charPtr, encoded.length);
+    ghostty_key_event_set_utf8(ptr, charPtr, encoded.length);
   }
 
   @override
   String? keyEventGetUtf8(int handle) {
     return using((arena) {
-      final lenPtr = arena<ffi.Size>();
-      final charPtr = native.ghostty_key_event_get_utf8(
-        ffi.Pointer.fromAddress(handle),
+      final lenPtr = arena<Size>();
+      final charPtr = ghostty_key_event_get_utf8(
+        Pointer.fromAddress(handle),
         lenPtr,
       );
-      if (charPtr == ffi.nullptr) return null;
+      if (charPtr == nullptr) return null;
       final len = lenPtr.value;
       if (len == 0) return null;
-      return utf8.decode(charPtr.cast<ffi.Uint8>().asTypedList(len));
+      return utf8.decode(charPtr.cast<Uint8>().asTypedList(len));
     });
   }
 
   @override
   void keyEventSetUnshiftedCodepoint(int handle, int codepoint) {
-    native.ghostty_key_event_set_unshifted_codepoint(
-      ffi.Pointer.fromAddress(handle),
+    ghostty_key_event_set_unshifted_codepoint(
+      Pointer.fromAddress(handle),
       codepoint,
     );
   }
 
   @override
   int keyEventGetUnshiftedCodepoint(int handle) {
-    return native.ghostty_key_event_get_unshifted_codepoint(
-      ffi.Pointer.fromAddress(handle),
+    return ghostty_key_event_get_unshifted_codepoint(
+      Pointer.fromAddress(handle),
     );
   }
 
   @override
   CResult<int> keyEncoderNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.KeyEncoderImpl>>();
-      final result = native.ghostty_key_encoder_new(ffi.nullptr, ptr);
+      final ptr = arena<Pointer<KeyEncoderImpl>>();
+      final result = ghostty_key_encoder_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void keyEncoderFree(int handle) {
-    native.ghostty_key_encoder_free(ffi.Pointer.fromAddress(handle));
+    ghostty_key_encoder_free(Pointer.fromAddress(handle));
   }
 
   @override
@@ -187,9 +174,9 @@ class NativeBindings implements GhosttyBindings {
     required bool value,
   }) {
     using((arena) {
-      final ptr = arena<ffi.Bool>()..value = value;
-      native.ghostty_key_encoder_setopt(
-        ffi.Pointer.fromAddress(handle),
+      final ptr = arena<Bool>()..value = value;
+      ghostty_key_encoder_setopt(
+        Pointer.fromAddress(handle),
         option,
         ptr.cast(),
       );
@@ -199,10 +186,10 @@ class NativeBindings implements GhosttyBindings {
   @override
   void keyEncoderSetKittyFlags(int handle, int flags) {
     using((arena) {
-      final ptr = arena<ffi.Uint8>()..value = flags;
-      native.ghostty_key_encoder_setopt(
-        ffi.Pointer.fromAddress(handle),
-        native.KeyEncoderOption.kittyFlags,
+      final ptr = arena<Uint8>()..value = flags;
+      ghostty_key_encoder_setopt(
+        Pointer.fromAddress(handle),
+        KeyEncoderOption.kittyFlags,
         ptr.cast(),
       );
     });
@@ -211,10 +198,10 @@ class NativeBindings implements GhosttyBindings {
   @override
   void keyEncoderSetOptionAsAlt(int handle, OptionAsAlt value) {
     using((arena) {
-      final ptr = arena<ffi.Int32>()..value = value.value;
-      native.ghostty_key_encoder_setopt(
-        ffi.Pointer.fromAddress(handle),
-        native.KeyEncoderOption.macosOptionAsAlt,
+      final ptr = arena<Int32>()..value = value.value;
+      ghostty_key_encoder_setopt(
+        Pointer.fromAddress(handle),
+        KeyEncoderOption.macosOptionAsAlt,
         ptr.cast(),
       );
     });
@@ -222,21 +209,21 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   void keyEncoderSetOptFromTerminal(int encoder, int terminal) {
-    native.ghostty_key_encoder_setopt_from_terminal(
-      ffi.Pointer.fromAddress(encoder),
-      ffi.Pointer.fromAddress(terminal),
+    ghostty_key_encoder_setopt_from_terminal(
+      Pointer.fromAddress(encoder),
+      Pointer.fromAddress(terminal),
     );
   }
 
   @override
   CResult<String> keyEncoderEncode(int encoder, int event) {
     return using((arena) {
-      final outLen = arena<ffi.Size>();
+      final outLen = arena<Size>();
       var bufSize = 128;
-      var buf = arena<ffi.Char>(bufSize);
-      var result = native.ghostty_key_encoder_encode(
-        ffi.Pointer.fromAddress(encoder),
-        ffi.Pointer.fromAddress(event),
+      var buf = arena<Char>(bufSize);
+      var result = ghostty_key_encoder_encode(
+        Pointer.fromAddress(encoder),
+        Pointer.fromAddress(event),
         buf,
         bufSize,
         outLen,
@@ -245,10 +232,10 @@ class NativeBindings implements GhosttyBindings {
       // Retry with the required size if the initial buffer was too small.
       if (result == Result.outOfSpace) {
         bufSize = outLen.value;
-        buf = arena<ffi.Char>(bufSize);
-        result = native.ghostty_key_encoder_encode(
-          ffi.Pointer.fromAddress(encoder),
-          ffi.Pointer.fromAddress(event),
+        buf = arena<Char>(bufSize);
+        result = ghostty_key_encoder_encode(
+          Pointer.fromAddress(encoder),
+          Pointer.fromAddress(event),
           buf,
           bufSize,
           outLen,
@@ -256,58 +243,50 @@ class NativeBindings implements GhosttyBindings {
       }
 
       final len = outLen.value;
-      return (result, utf8.decode(buf.cast<ffi.Uint8>().asTypedList(len)));
+      return (result, utf8.decode(buf.cast<Uint8>().asTypedList(len)));
     });
   }
 
   @override
   CResult<int> mouseEventNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.MouseEventImpl>>();
-      final result = native.ghostty_mouse_event_new(ffi.nullptr, ptr);
+      final ptr = arena<Pointer<MouseEventImpl>>();
+      final result = ghostty_mouse_event_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void mouseEventFree(int handle) {
-    native.ghostty_mouse_event_free(ffi.Pointer.fromAddress(handle));
+    ghostty_mouse_event_free(Pointer.fromAddress(handle));
   }
 
   @override
   void mouseEventSetAction(int handle, MouseAction action) {
-    native.ghostty_mouse_event_set_action(
-      ffi.Pointer.fromAddress(handle),
-      action,
-    );
+    ghostty_mouse_event_set_action(Pointer.fromAddress(handle), action);
   }
 
   @override
   MouseAction mouseEventGetAction(int handle) {
-    return native.ghostty_mouse_event_get_action(
-      ffi.Pointer.fromAddress(handle),
-    );
+    return ghostty_mouse_event_get_action(Pointer.fromAddress(handle));
   }
 
   @override
   void mouseEventSetButton(int handle, MouseButton button) {
-    native.ghostty_mouse_event_set_button(
-      ffi.Pointer.fromAddress(handle),
-      button,
-    );
+    ghostty_mouse_event_set_button(Pointer.fromAddress(handle), button);
   }
 
   @override
   void mouseEventClearButton(int handle) {
-    native.ghostty_mouse_event_clear_button(ffi.Pointer.fromAddress(handle));
+    ghostty_mouse_event_clear_button(Pointer.fromAddress(handle));
   }
 
   @override
   CResult<MouseButton> mouseEventGetButton(int handle) {
     return using((arena) {
-      final out = arena<ffi.Int32>();
-      final hasButton = native.ghostty_mouse_event_get_button(
-        ffi.Pointer.fromAddress(handle),
+      final out = arena<Int32>();
+      final hasButton = ghostty_mouse_event_get_button(
+        Pointer.fromAddress(handle),
         out.cast(),
       );
       final result = hasButton ? Result.success : Result.noValue;
@@ -317,47 +296,42 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   void mouseEventSetMods(int handle, int mods) {
-    native.ghostty_mouse_event_set_mods(ffi.Pointer.fromAddress(handle), mods);
+    ghostty_mouse_event_set_mods(Pointer.fromAddress(handle), mods);
   }
 
   @override
   int mouseEventGetMods(int handle) {
-    return native.ghostty_mouse_event_get_mods(ffi.Pointer.fromAddress(handle));
+    return ghostty_mouse_event_get_mods(Pointer.fromAddress(handle));
   }
 
   @override
   void mouseEventSetPosition(int handle, double x, double y) {
     using((arena) {
-      final pos = arena<native.MousePosition>();
+      final pos = arena<MousePosition>();
       pos.ref.x = x;
       pos.ref.y = y;
-      native.ghostty_mouse_event_set_position(
-        ffi.Pointer.fromAddress(handle),
-        pos.ref,
-      );
+      ghostty_mouse_event_set_position(Pointer.fromAddress(handle), pos.ref);
     });
   }
 
   @override
   (double, double) mouseEventGetPosition(int handle) {
-    final pos = native.ghostty_mouse_event_get_position(
-      ffi.Pointer.fromAddress(handle),
-    );
+    final pos = ghostty_mouse_event_get_position(Pointer.fromAddress(handle));
     return (pos.x, pos.y);
   }
 
   @override
   CResult<int> mouseEncoderNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.MouseEncoderImpl>>();
-      final result = native.ghostty_mouse_encoder_new(ffi.nullptr, ptr);
+      final ptr = arena<Pointer<MouseEncoderImpl>>();
+      final result = ghostty_mouse_encoder_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void mouseEncoderFree(int handle) {
-    native.ghostty_mouse_encoder_free(ffi.Pointer.fromAddress(handle));
+    ghostty_mouse_encoder_free(Pointer.fromAddress(handle));
   }
 
   @override
@@ -367,9 +341,9 @@ class NativeBindings implements GhosttyBindings {
     required bool value,
   }) {
     using((arena) {
-      final ptr = arena<ffi.Bool>()..value = value;
-      native.ghostty_mouse_encoder_setopt(
-        ffi.Pointer.fromAddress(handle),
+      final ptr = arena<Bool>()..value = value;
+      ghostty_mouse_encoder_setopt(
+        Pointer.fromAddress(handle),
         option,
         ptr.cast(),
       );
@@ -379,10 +353,10 @@ class NativeBindings implements GhosttyBindings {
   @override
   void mouseEncoderSetTrackingMode(int handle, MouseTrackingMode mode) {
     using((arena) {
-      final ptr = arena<ffi.Int32>()..value = mode.value;
-      native.ghostty_mouse_encoder_setopt(
-        ffi.Pointer.fromAddress(handle),
-        native.MouseEncoderOption.event,
+      final ptr = arena<Int32>()..value = mode.value;
+      ghostty_mouse_encoder_setopt(
+        Pointer.fromAddress(handle),
+        MouseEncoderOption.event,
         ptr.cast(),
       );
     });
@@ -391,10 +365,10 @@ class NativeBindings implements GhosttyBindings {
   @override
   void mouseEncoderSetFormat(int handle, MouseFormat format) {
     using((arena) {
-      final ptr = arena<ffi.Int32>()..value = format.value;
-      native.ghostty_mouse_encoder_setopt(
-        ffi.Pointer.fromAddress(handle),
-        native.MouseEncoderOption.format,
+      final ptr = arena<Int32>()..value = format.value;
+      ghostty_mouse_encoder_setopt(
+        Pointer.fromAddress(handle),
+        MouseEncoderOption.format,
         ptr.cast(),
       );
     });
@@ -405,7 +379,7 @@ class NativeBindings implements GhosttyBindings {
     using((arena) {
       final ptr = arena<native.MouseEncoderSize>();
       ptr.ref
-        ..size = ffi.sizeOf<native.MouseEncoderSize>()
+        ..size = sizeOf<native.MouseEncoderSize>()
         ..screen_width = size.screenWidth
         ..screen_height = size.screenHeight
         ..cell_width = size.cellWidth
@@ -414,9 +388,9 @@ class NativeBindings implements GhosttyBindings {
         ..padding_bottom = size.paddingBottom
         ..padding_left = size.paddingLeft
         ..padding_right = size.paddingRight;
-      native.ghostty_mouse_encoder_setopt(
-        ffi.Pointer.fromAddress(handle),
-        native.MouseEncoderOption.size,
+      ghostty_mouse_encoder_setopt(
+        Pointer.fromAddress(handle),
+        MouseEncoderOption.size,
         ptr.cast(),
       );
     });
@@ -424,26 +398,26 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   void mouseEncoderSetOptFromTerminal(int encoder, int terminal) {
-    native.ghostty_mouse_encoder_setopt_from_terminal(
-      ffi.Pointer.fromAddress(encoder),
-      ffi.Pointer.fromAddress(terminal),
+    ghostty_mouse_encoder_setopt_from_terminal(
+      Pointer.fromAddress(encoder),
+      Pointer.fromAddress(terminal),
     );
   }
 
   @override
   void mouseEncoderReset(int handle) {
-    native.ghostty_mouse_encoder_reset(ffi.Pointer.fromAddress(handle));
+    ghostty_mouse_encoder_reset(Pointer.fromAddress(handle));
   }
 
   @override
   CResult<String> mouseEncoderEncode(int encoder, int event) {
     return using((arena) {
-      final outLen = arena<ffi.Size>();
+      final outLen = arena<Size>();
       var bufSize = 128;
-      var buf = arena<ffi.Char>(bufSize);
-      var result = native.ghostty_mouse_encoder_encode(
-        ffi.Pointer.fromAddress(encoder),
-        ffi.Pointer.fromAddress(event),
+      var buf = arena<Char>(bufSize);
+      var result = ghostty_mouse_encoder_encode(
+        Pointer.fromAddress(encoder),
+        Pointer.fromAddress(event),
         buf,
         bufSize,
         outLen,
@@ -452,10 +426,10 @@ class NativeBindings implements GhosttyBindings {
       // Retry with the required size if the initial buffer was too small.
       if (result == Result.outOfSpace) {
         bufSize = outLen.value;
-        buf = arena<ffi.Char>(bufSize);
-        result = native.ghostty_mouse_encoder_encode(
-          ffi.Pointer.fromAddress(encoder),
-          ffi.Pointer.fromAddress(event),
+        buf = arena<Char>(bufSize);
+        result = ghostty_mouse_encoder_encode(
+          Pointer.fromAddress(encoder),
+          Pointer.fromAddress(event),
           buf,
           bufSize,
           outLen,
@@ -463,85 +437,81 @@ class NativeBindings implements GhosttyBindings {
       }
 
       final len = outLen.value;
-      return (result, utf8.decode(buf.cast<ffi.Uint8>().asTypedList(len)));
+      return (result, utf8.decode(buf.cast<Uint8>().asTypedList(len)));
     });
   }
 
   @override
   CResult<int> oscNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.OscParserImpl>>();
-      final result = native.ghostty_osc_new(ffi.nullptr, ptr);
+      final ptr = arena<Pointer<OscParserImpl>>();
+      final result = ghostty_osc_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void oscFree(int handle) {
-    native.ghostty_osc_free(ffi.Pointer.fromAddress(handle));
+    ghostty_osc_free(Pointer.fromAddress(handle));
   }
 
   @override
   void oscFeedByte(int handle, int byte) {
-    native.ghostty_osc_next(ffi.Pointer.fromAddress(handle), byte);
+    ghostty_osc_next(Pointer.fromAddress(handle), byte);
   }
 
   @override
   int oscEnd(int handle, int terminator) {
-    return native
-        .ghostty_osc_end(ffi.Pointer.fromAddress(handle), terminator)
-        .address;
+    return ghostty_osc_end(Pointer.fromAddress(handle), terminator).address;
   }
 
   @override
   OscCommandType oscCommandType(int command) {
-    return native.ghostty_osc_command_type(
-      native.OscCommand.fromAddress(command),
-    );
+    return ghostty_osc_command_type(OscCommand.fromAddress(command));
   }
 
   @override
   String? oscCommandWindowTitle(int command) {
-    return _extractWindowTitle(native.OscCommand.fromAddress(command));
+    return _extractWindowTitle(OscCommand.fromAddress(command));
   }
 
   @override
   void oscReset(int handle) {
-    native.ghostty_osc_reset(ffi.Pointer.fromAddress(handle));
+    ghostty_osc_reset(Pointer.fromAddress(handle));
   }
 
   @override
   CResult<int> sgrNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.SgrParserImpl>>();
-      final result = native.ghostty_sgr_new(ffi.nullptr, ptr);
+      final ptr = arena<Pointer<SgrParserImpl>>();
+      final result = ghostty_sgr_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void sgrFree(int handle) {
-    native.ghostty_sgr_free(ffi.Pointer.fromAddress(handle));
+    ghostty_sgr_free(Pointer.fromAddress(handle));
   }
 
   @override
   Result sgrSetParams(int handle, List<int> params, List<String>? separators) {
     return using((arena) {
-      final nativeParams = arena<ffi.Uint16>(params.length);
+      final nativeParams = arena<Uint16>(params.length);
       for (var i = 0; i < params.length; i++) {
         nativeParams[i] = params[i];
       }
 
-      ffi.Pointer<ffi.Char> nativeSeps = ffi.nullptr;
+      Pointer<Char> nativeSeps = nullptr;
       if (separators != null) {
-        nativeSeps = arena<ffi.Char>(separators.length);
+        nativeSeps = arena<Char>(separators.length);
         for (var i = 0; i < separators.length; i++) {
           (nativeSeps + i).value = separators[i].codeUnitAt(0);
         }
       }
 
-      return native.ghostty_sgr_set_params(
-        ffi.Pointer.fromAddress(handle),
+      return ghostty_sgr_set_params(
+        Pointer.fromAddress(handle),
         nativeParams,
         nativeSeps,
         params.length,
@@ -553,10 +523,7 @@ class NativeBindings implements GhosttyBindings {
   SgrAttribute? sgrNext(int handle) {
     return using((arena) {
       final attrPtr = arena<native.SgrAttribute>();
-      final hasNext = native.ghostty_sgr_next(
-        ffi.Pointer.fromAddress(handle),
-        attrPtr,
-      );
+      final hasNext = ghostty_sgr_next(Pointer.fromAddress(handle), attrPtr);
       if (!hasNext) return null;
       return _convertNativeSgrAttribute(attrPtr.ref);
     });
@@ -564,48 +531,44 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   void sgrReset(int handle) {
-    native.ghostty_sgr_reset(ffi.Pointer.fromAddress(handle));
+    ghostty_sgr_reset(Pointer.fromAddress(handle));
   }
 
   @override
   bool pasteIsSafe(String data) {
     return using((arena) {
       final encoded = utf8.encode(data);
-      final ptr = arena<ffi.Char>(encoded.length);
-      ptr.cast<ffi.Uint8>().asTypedList(encoded.length).setAll(0, encoded);
-      return native.ghostty_paste_is_safe(ptr, encoded.length);
+      final ptr = arena<Char>(encoded.length);
+      ptr.cast<Uint8>().asTypedList(encoded.length).setAll(0, encoded);
+      return ghostty_paste_is_safe(ptr, encoded.length);
     });
   }
 
   @override
   CResult<int> terminalNew(int cols, int rows, int maxScrollback) {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.TerminalImpl>>();
-      final opts = arena<native.TerminalOptions>();
+      final ptr = arena<Pointer<TerminalImpl>>();
+      final opts = arena<TerminalOptions>();
       opts.ref.cols = cols;
       opts.ref.rows = rows;
       opts.ref.max_scrollback = maxScrollback;
-      final result = native.ghostty_terminal_new(ffi.nullptr, ptr, opts.ref);
+      final result = ghostty_terminal_new(nullptr, ptr, opts.ref);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void terminalFree(int handle) {
-    native.ghostty_terminal_free(ffi.Pointer.fromAddress(handle));
+    ghostty_terminal_free(Pointer.fromAddress(handle));
   }
 
   @override
   void terminalVtWrite(int handle, Uint8List data) {
     if (data.isEmpty) return;
     using((arena) {
-      final ptr = arena<ffi.Uint8>(data.length);
+      final ptr = arena<Uint8>(data.length);
       ptr.asTypedList(data.length).setAll(0, data);
-      native.ghostty_terminal_vt_write(
-        ffi.Pointer.fromAddress(handle),
-        ptr,
-        data.length,
-      );
+      ghostty_terminal_vt_write(Pointer.fromAddress(handle), ptr, data.length);
     });
   }
 
@@ -617,8 +580,8 @@ class NativeBindings implements GhosttyBindings {
     int cellWidthPx,
     int cellHeightPx,
   ) {
-    return native.ghostty_terminal_resize(
-      ffi.Pointer.fromAddress(handle),
+    return ghostty_terminal_resize(
+      Pointer.fromAddress(handle),
       cols,
       rows,
       cellWidthPx,
@@ -628,7 +591,7 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   void terminalReset(int handle) {
-    native.ghostty_terminal_reset(ffi.Pointer.fromAddress(handle));
+    ghostty_terminal_reset(Pointer.fromAddress(handle));
   }
 
   @override
@@ -638,13 +601,10 @@ class NativeBindings implements GhosttyBindings {
     int delta,
   ) {
     using((arena) {
-      final sv = arena<native.TerminalScrollViewport>();
+      final sv = arena<TerminalScrollViewport>();
       sv.ref.tagAsInt = tag.value;
       sv.ref.value.delta = delta;
-      native.ghostty_terminal_scroll_viewport(
-        ffi.Pointer.fromAddress(handle),
-        sv.ref,
-      );
+      ghostty_terminal_scroll_viewport(Pointer.fromAddress(handle), sv.ref);
     });
   }
 
@@ -676,8 +636,8 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<TerminalScreen> terminalGetActiveScreen(int handle) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       .activeScreen,
       _outI32.cast(),
     );
@@ -686,8 +646,8 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> terminalGetKittyKeyboardFlags(int handle) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       .kittyKeyboardFlags,
       _outU8.cast(),
     );
@@ -696,8 +656,8 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<Scrollbar> terminalGetScrollbar(int handle) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       .scrollbar,
       _outScrollbar.cast(),
     );
@@ -713,8 +673,8 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<bool> terminalModeGet(int handle, int mode) {
-    final result = native.ghostty_terminal_mode_get(
-      ffi.Pointer.fromAddress(handle),
+    final result = ghostty_terminal_mode_get(
+      Pointer.fromAddress(handle),
       mode,
       _outBool,
     );
@@ -723,11 +683,7 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   Result terminalModeSet(int handle, int mode, {required bool value}) {
-    return native.ghostty_terminal_mode_set(
-      ffi.Pointer.fromAddress(handle),
-      mode,
-      value,
-    );
+    return ghostty_terminal_mode_set(Pointer.fromAddress(handle), mode, value);
   }
 
   @override
@@ -788,22 +744,22 @@ class NativeBindings implements GhosttyBindings {
   @override
   Result terminalSetColorPalette(int handle, List<RgbColor>? palette) {
     if (palette == null) {
-      return native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.colorPalette,
-        ffi.nullptr,
+      return ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.colorPalette,
+        nullptr,
       );
     }
     return using((arena) {
-      final ptr = arena<native.ColorRgb>(256);
+      final ptr = arena<ColorRgb>(256);
       for (var i = 0; i < 256; i++) {
         ptr[i].r = palette[i].r;
         ptr[i].g = palette[i].g;
         ptr[i].b = palette[i].b;
       }
-      return native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.colorPalette,
+      return ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.colorPalette,
         ptr.cast(),
       );
     });
@@ -853,16 +809,16 @@ class NativeBindings implements GhosttyBindings {
   CResult<Uint8List> pasteEncode(String data, {required bool bracketed}) {
     return using((arena) {
       final encoded = utf8.encode(data);
-      final dataPtr = arena<ffi.Char>(encoded.length);
-      dataPtr.cast<ffi.Uint8>().asTypedList(encoded.length).setAll(0, encoded);
-      final outWritten = arena<ffi.Size>();
+      final dataPtr = arena<Char>(encoded.length);
+      dataPtr.cast<Uint8>().asTypedList(encoded.length).setAll(0, encoded);
+      final outWritten = arena<Size>();
 
       // First call to get the required buffer size.
-      var result = native.ghostty_paste_encode(
+      var result = ghostty_paste_encode(
         dataPtr,
         encoded.length,
         bracketed,
-        ffi.nullptr,
+        nullptr,
         0,
         outWritten,
       );
@@ -870,12 +826,12 @@ class NativeBindings implements GhosttyBindings {
       if (result != .outOfSpace) return (result, Uint8List(0));
 
       final bufLen = outWritten.value;
-      final buf = arena<ffi.Char>(bufLen);
+      final buf = arena<Char>(bufLen);
 
       // Re-encode the data since the first call modified it in place.
-      dataPtr.cast<ffi.Uint8>().asTypedList(encoded.length).setAll(0, encoded);
+      dataPtr.cast<Uint8>().asTypedList(encoded.length).setAll(0, encoded);
 
-      result = native.ghostty_paste_encode(
+      result = ghostty_paste_encode(
         dataPtr,
         encoded.length,
         bracketed,
@@ -887,7 +843,7 @@ class NativeBindings implements GhosttyBindings {
       final written = outWritten.value;
       return (
         result,
-        Uint8List.fromList(buf.cast<ffi.Uint8>().asTypedList(written)),
+        Uint8List.fromList(buf.cast<Uint8>().asTypedList(written)),
       );
     });
   }
@@ -895,22 +851,22 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<int> renderStateNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.RenderStateImpl>>();
-      final result = native.ghostty_render_state_new(ffi.nullptr, ptr);
+      final ptr = arena<Pointer<RenderStateImpl>>();
+      final result = ghostty_render_state_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void renderStateFree(int handle) {
-    native.ghostty_render_state_free(ffi.Pointer.fromAddress(handle));
+    ghostty_render_state_free(Pointer.fromAddress(handle));
   }
 
   @override
   Result renderStateUpdate(int state, int terminal) {
-    return native.ghostty_render_state_update(
-      ffi.Pointer.fromAddress(state),
-      ffi.Pointer.fromAddress(terminal),
+    return ghostty_render_state_update(
+      Pointer.fromAddress(state),
+      Pointer.fromAddress(terminal),
     );
   }
 
@@ -926,9 +882,9 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<RenderStateDirty> renderStateGetDirty(int state) {
-    final result = native.ghostty_render_state_get(
-      ffi.Pointer.fromAddress(state),
-      native.RenderStateData.dirty,
+    final result = ghostty_render_state_get(
+      Pointer.fromAddress(state),
+      RenderStateData.dirty,
       _outI32.cast(),
     );
     return (result, .fromValue(_outI32.value));
@@ -937,17 +893,17 @@ class NativeBindings implements GhosttyBindings {
   @override
   Result renderStateSetDirty(int state, RenderStateDirty dirty) {
     _outI32.value = dirty.value;
-    return native.ghostty_render_state_set(
-      ffi.Pointer.fromAddress(state),
-      native.RenderStateOption.dirty,
+    return ghostty_render_state_set(
+      Pointer.fromAddress(state),
+      RenderStateOption.dirty,
       _outI32.cast(),
     );
   }
 
   @override
   CResult<TerminalColors> renderStateGetColors(int state) {
-    final result = native.ghostty_render_state_colors_get(
-      ffi.Pointer.fromAddress(state),
+    final result = ghostty_render_state_colors_get(
+      Pointer.fromAddress(state),
       _outColors,
     );
 
@@ -980,9 +936,9 @@ class NativeBindings implements GhosttyBindings {
   CResult<RenderStateCursorVisualStyle> renderStateGetCursorVisualStyle(
     int state,
   ) {
-    final result = native.ghostty_render_state_get(
-      ffi.Pointer.fromAddress(state),
-      native.RenderStateData.cursorVisualStyle,
+    final result = ghostty_render_state_get(
+      Pointer.fromAddress(state),
+      RenderStateData.cursorVisualStyle,
       _outI32.cast(),
     );
     return (result, RenderStateCursorVisualStyle.fromValue(_outI32.value));
@@ -1026,30 +982,25 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<int> rowIteratorNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.RenderStateRowIteratorImpl>>();
-      final result = native.ghostty_render_state_row_iterator_new(
-        ffi.nullptr,
-        ptr,
-      );
+      final ptr = arena<Pointer<RenderStateRowIteratorImpl>>();
+      final result = ghostty_render_state_row_iterator_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void rowIteratorFree(int handle) {
-    native.ghostty_render_state_row_iterator_free(
-      ffi.Pointer.fromAddress(handle),
-    );
+    ghostty_render_state_row_iterator_free(Pointer.fromAddress(handle));
   }
 
   @override
   Result rowIteratorInit(int iterator, int renderState) {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.RenderStateRowIterator>>();
-      ptr.value = ffi.Pointer.fromAddress(iterator);
-      return native.ghostty_render_state_get(
-        ffi.Pointer.fromAddress(renderState),
-        native.RenderStateData.rowIterator,
+      final ptr = arena<Pointer<RenderStateRowIterator>>();
+      ptr.value = Pointer.fromAddress(iterator);
+      return ghostty_render_state_get(
+        Pointer.fromAddress(renderState),
+        RenderStateData.rowIterator,
         ptr.cast(),
       );
     });
@@ -1057,16 +1008,16 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   bool rowIteratorNext(int iterator) {
-    return native.ghostty_render_state_row_iterator_next(
-      ffi.Pointer.fromAddress(iterator),
+    return ghostty_render_state_row_iterator_next(
+      Pointer.fromAddress(iterator),
     );
   }
 
   @override
   CResult<bool> rowIteratorGetDirty(int iterator) {
-    final result = native.ghostty_render_state_row_get(
-      ffi.Pointer.fromAddress(iterator),
-      native.RenderStateRowData.dirty,
+    final result = ghostty_render_state_row_get(
+      Pointer.fromAddress(iterator),
+      RenderStateRowData.dirty,
       _outBool.cast(),
     );
     return (result, _outBool.value);
@@ -1075,18 +1026,18 @@ class NativeBindings implements GhosttyBindings {
   @override
   Result rowIteratorSetDirty(int iterator, {required bool dirty}) {
     _outBool.value = dirty;
-    return native.ghostty_render_state_row_set(
-      ffi.Pointer.fromAddress(iterator),
-      native.RenderStateRowOption.dirty,
+    return ghostty_render_state_row_set(
+      Pointer.fromAddress(iterator),
+      RenderStateRowOption.dirty,
       _outBool.cast(),
     );
   }
 
   @override
   CResult<int> rowIteratorGetRawRow(int iterator) {
-    final result = native.ghostty_render_state_row_get(
-      ffi.Pointer.fromAddress(iterator),
-      native.RenderStateRowData.raw,
+    final result = ghostty_render_state_row_get(
+      Pointer.fromAddress(iterator),
+      RenderStateRowData.raw,
       _outU64.cast(),
     );
     return (result, _outU64.value);
@@ -1095,28 +1046,25 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<int> rowCellsNew() {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.RenderStateRowCellsImpl>>();
-      final result = native.ghostty_render_state_row_cells_new(
-        ffi.nullptr,
-        ptr,
-      );
+      final ptr = arena<Pointer<RenderStateRowCellsImpl>>();
+      final result = ghostty_render_state_row_cells_new(nullptr, ptr);
       return (result, ptr.value.address);
     });
   }
 
   @override
   void rowCellsFree(int handle) {
-    native.ghostty_render_state_row_cells_free(ffi.Pointer.fromAddress(handle));
+    ghostty_render_state_row_cells_free(Pointer.fromAddress(handle));
   }
 
   @override
   Result rowCellsInit(int cells, int iterator) {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.RenderStateRowCells>>();
-      ptr.value = ffi.Pointer.fromAddress(cells);
-      return native.ghostty_render_state_row_get(
-        ffi.Pointer.fromAddress(iterator),
-        native.RenderStateRowData.cells,
+      final ptr = arena<Pointer<RenderStateRowCells>>();
+      ptr.value = Pointer.fromAddress(cells);
+      return ghostty_render_state_row_get(
+        Pointer.fromAddress(iterator),
+        RenderStateRowData.cells,
         ptr.cast(),
       );
     });
@@ -1124,24 +1072,19 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   bool rowCellsNext(int cells) {
-    return native.ghostty_render_state_row_cells_next(
-      ffi.Pointer.fromAddress(cells),
-    );
+    return ghostty_render_state_row_cells_next(Pointer.fromAddress(cells));
   }
 
   @override
   Result rowCellsSelect(int cells, int x) {
-    return native.ghostty_render_state_row_cells_select(
-      ffi.Pointer.fromAddress(cells),
-      x,
-    );
+    return ghostty_render_state_row_cells_select(Pointer.fromAddress(cells), x);
   }
 
   @override
   CResult<int> rowCellsGetRawCell(int cells) {
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
-      native.RenderStateRowCellsData.raw,
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
+      RenderStateRowCellsData.raw,
       _outU64.cast(),
     );
     return (result, _outU64.value);
@@ -1149,9 +1092,9 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<Style> rowCellsGetStyle(int cells) {
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
-      native.RenderStateRowCellsData.style,
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
+      RenderStateRowCellsData.style,
       _outStyle.cast(),
     );
     return (result, _readNativeStyle(_outStyle.ref));
@@ -1159,9 +1102,9 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> rowCellsGetGraphemeLen(int cells) {
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
-      native.RenderStateRowCellsData.graphemesLen,
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
+      RenderStateRowCellsData.graphemesLen,
       _outU32.cast(),
     );
     return (result, _outU32.value);
@@ -1170,10 +1113,10 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<List<int>> rowCellsGetGraphemes(int cells, int len) {
     if (len <= 0) return (Result.success, const []);
-    final buf = len <= 32 ? _graphemeBuf : calloc<ffi.Uint32>(len);
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
-      native.RenderStateRowCellsData.graphemesBuf,
+    final buf = len <= 32 ? _graphemeBuf : calloc<Uint32>(len);
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
+      RenderStateRowCellsData.graphemesBuf,
       buf.cast(),
     );
     final graphemes = [for (var i = 0; i < len; i++) buf[i]];
@@ -1183,9 +1126,9 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<RgbColor> rowCellsGetBgColor(int cells) {
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
-      native.RenderStateRowCellsData.bgColor,
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
+      RenderStateRowCellsData.bgColor,
       _outColorRgb.cast(),
     );
     return (
@@ -1196,9 +1139,9 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<RgbColor> rowCellsGetFgColor(int cells) {
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
-      native.RenderStateRowCellsData.fgColor,
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
+      RenderStateRowCellsData.fgColor,
       _outColorRgb.cast(),
     );
     return (
@@ -1209,8 +1152,8 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> rowCellsGetBgColorArgb(int cells) {
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
       .bgColor,
       _outColorRgb.cast(),
     );
@@ -1220,8 +1163,8 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> rowCellsGetFgColorArgb(int cells) {
-    final result = native.ghostty_render_state_row_cells_get(
-      ffi.Pointer.fromAddress(cells),
+    final result = ghostty_render_state_row_cells_get(
+      Pointer.fromAddress(cells),
       .fgColor,
       _outColorRgb.cast(),
     );
@@ -1252,7 +1195,7 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> cellGetStyleId(int cell) {
-    final result = native.ghostty_cell_get(cell, .styleId, _outU16.cast());
+    final result = ghostty_cell_get(cell, .styleId, _outU16.cast());
     return (result, _outU16.value);
   }
 
@@ -1272,15 +1215,15 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> cellGetColorPalette(int cell) {
-    final result = native.ghostty_cell_get(cell, .colorPalette, _outU8.cast());
+    final result = ghostty_cell_get(cell, .colorPalette, _outU8.cast());
     return (result, _outU8.value);
   }
 
   @override
   CResult<RgbColor> cellGetColorRgb(int cell) {
     return using((arena) {
-      final out = arena<native.ColorRgb>();
-      final result = native.ghostty_cell_get(cell, .colorRgb, out.cast());
+      final out = arena<ColorRgb>();
+      final result = ghostty_cell_get(cell, .colorRgb, out.cast());
       return (result, RgbColor(out.ref.r, out.ref.g, out.ref.b));
     });
   }
@@ -1304,7 +1247,7 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<RowSemanticPrompt> rowGetSemanticPrompt(int row) {
-    final result = native.ghostty_row_get(row, .semanticPrompt, _outI32.cast());
+    final result = ghostty_row_get(row, .semanticPrompt, _outI32.cast());
     return (result, RowSemanticPrompt.fromValue(_outI32.value));
   }
 
@@ -1319,95 +1262,87 @@ class NativeBindings implements GhosttyBindings {
   @override
   CResult<String> focusEncode(FocusEvent event) {
     return using((arena) {
-      final outLen = arena<ffi.Size>();
-      final buf = arena<ffi.Char>(8);
-      final result = native.ghostty_focus_encode(event, buf, 8, outLen);
+      final outLen = arena<Size>();
+      final buf = arena<Char>(8);
+      final result = ghostty_focus_encode(event, buf, 8, outLen);
       final len = outLen.value;
       final encoded = len == 0
           ? ''
-          : utf8.decode(buf.cast<ffi.Uint8>().asTypedList(len));
+          : utf8.decode(buf.cast<Uint8>().asTypedList(len));
       return (result, encoded);
     });
   }
 
-  CResult<int> _terminalGetU16(int handle, native.TerminalData data) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+  CResult<int> _terminalGetU16(int handle, TerminalData data) {
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       data,
       _outU16.cast(),
     );
     return (result, _outU16.value);
   }
 
-  CResult<int> _terminalGetU32(int handle, native.TerminalData data) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+  CResult<int> _terminalGetU32(int handle, TerminalData data) {
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       data,
       _outU32.cast(),
     );
     return (result, _outU32.value);
   }
 
-  CResult<int> _terminalGetSize(int handle, native.TerminalData data) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+  CResult<int> _terminalGetSize(int handle, TerminalData data) {
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       data,
       _outSize.cast(),
     );
     return (result, _outSize.value);
   }
 
-  CResult<String> _terminalGetString(int handle, native.TerminalData data) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+  CResult<String> _terminalGetString(int handle, TerminalData data) {
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       data,
       _outGhosttyString.cast(),
     );
     final ptr = _outGhosttyString.ref.ptr;
     final len = _outGhosttyString.ref.len;
-    if (len == 0 || ptr == ffi.nullptr) return (result, '');
+    if (len == 0 || ptr == nullptr) return (result, '');
     return (result, utf8.decode(ptr.asTypedList(len)));
   }
 
-  Result _terminalSetString(
-    int handle,
-    native.TerminalOption option,
-    String? value,
-  ) {
+  Result _terminalSetString(int handle, TerminalOption option, String? value) {
     if (value == null) {
-      return native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        option,
-        ffi.nullptr,
-      );
+      return ghostty_terminal_set(Pointer.fromAddress(handle), option, nullptr);
     }
     return using((arena) {
       final encoded = utf8.encode(value);
       final strPtr = arena<native.String>();
-      final bytesPtr = arena<ffi.Uint8>(encoded.length);
+      final bytesPtr = arena<Uint8>(encoded.length);
       bytesPtr.asTypedList(encoded.length).setAll(0, encoded);
       strPtr.ref.ptr = bytesPtr;
       strPtr.ref.len = encoded.length;
-      return native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
+      return ghostty_terminal_set(
+        Pointer.fromAddress(handle),
         option,
         strPtr.cast(),
       );
     });
   }
 
-  CResult<bool> _terminalGetBool(int handle, native.TerminalData data) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+  CResult<bool> _terminalGetBool(int handle, TerminalData data) {
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       data,
       _outBool.cast(),
     );
     return (result, _outBool.value);
   }
 
-  CResult<RgbColor> _terminalGetColor(int handle, native.TerminalData data) {
-    final result = native.ghostty_terminal_get(
-      ffi.Pointer.fromAddress(handle),
+  CResult<RgbColor> _terminalGetColor(int handle, TerminalData data) {
+    final result = ghostty_terminal_get(
+      Pointer.fromAddress(handle),
       data,
       _outColorRgb.cast(),
     );
@@ -1417,14 +1352,11 @@ class NativeBindings implements GhosttyBindings {
     );
   }
 
-  CResult<List<RgbColor>> _terminalGetPalette(
-    int handle,
-    native.TerminalData data,
-  ) {
+  CResult<List<RgbColor>> _terminalGetPalette(int handle, TerminalData data) {
     return using((arena) {
-      final ptr = arena<native.ColorRgb>(256);
-      final result = native.ghostty_terminal_get(
-        ffi.Pointer.fromAddress(handle),
+      final ptr = arena<ColorRgb>(256);
+      final result = ghostty_terminal_get(
+        Pointer.fromAddress(handle),
         data,
         ptr.cast(),
       );
@@ -1440,77 +1372,69 @@ class NativeBindings implements GhosttyBindings {
     });
   }
 
-  Result _terminalSetColor(
-    int handle,
-    native.TerminalOption option,
-    RgbColor? color,
-  ) {
+  Result _terminalSetColor(int handle, TerminalOption option, RgbColor? color) {
     if (color == null) {
-      return native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        option,
-        ffi.nullptr,
-      );
+      return ghostty_terminal_set(Pointer.fromAddress(handle), option, nullptr);
     }
     _outColorRgb.ref.r = color.r;
     _outColorRgb.ref.g = color.g;
     _outColorRgb.ref.b = color.b;
-    return native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
+    return ghostty_terminal_set(
+      Pointer.fromAddress(handle),
       option,
       _outColorRgb.cast(),
     );
   }
 
-  CResult<int> _renderStateGetU16(int state, native.RenderStateData data) {
-    final result = native.ghostty_render_state_get(
-      ffi.Pointer.fromAddress(state),
+  CResult<int> _renderStateGetU16(int state, RenderStateData data) {
+    final result = ghostty_render_state_get(
+      Pointer.fromAddress(state),
       data,
       _outU16.cast(),
     );
     return (result, _outU16.value);
   }
 
-  CResult<bool> _renderStateGetBool(int state, native.RenderStateData data) {
-    final result = native.ghostty_render_state_get(
-      ffi.Pointer.fromAddress(state),
+  CResult<bool> _renderStateGetBool(int state, RenderStateData data) {
+    final result = ghostty_render_state_get(
+      Pointer.fromAddress(state),
       data,
       _outBool.cast(),
     );
     return (result, _outBool.value);
   }
 
-  CResult<int> _cellGetU32(int cell, native.CellData data) {
-    final result = native.ghostty_cell_get(cell, data, _outU32.cast());
+  CResult<int> _cellGetU32(int cell, CellData data) {
+    final result = ghostty_cell_get(cell, data, _outU32.cast());
     return (result, _outU32.value);
   }
 
-  CResult<int> _cellGetI32(int cell, native.CellData data) {
-    final result = native.ghostty_cell_get(cell, data, _outI32.cast());
+  CResult<int> _cellGetI32(int cell, CellData data) {
+    final result = ghostty_cell_get(cell, data, _outI32.cast());
     return (result, _outI32.value);
   }
 
-  CResult<bool> _cellGetBool(int cell, native.CellData data) {
-    final result = native.ghostty_cell_get(cell, data, _outBool.cast());
+  CResult<bool> _cellGetBool(int cell, CellData data) {
+    final result = ghostty_cell_get(cell, data, _outBool.cast());
     return (result, _outBool.value);
   }
 
-  CResult<bool> _rowGetBool(int row, native.RowData data) {
-    final result = native.ghostty_row_get(row, data, _outBool.cast());
+  CResult<bool> _rowGetBool(int row, RowData data) {
+    final result = ghostty_row_get(row, data, _outBool.cast());
     return (result, _outBool.value);
   }
 
-  String? _extractWindowTitle(native.OscCommand commandPtr) {
+  String? _extractWindowTitle(OscCommand commandPtr) {
     return using((arena) {
-      final outPtr = arena<ffi.Pointer<ffi.Char>>();
-      final success = native.ghostty_osc_command_data(
+      final outPtr = arena<Pointer<Char>>();
+      final success = ghostty_osc_command_data(
         commandPtr,
-        native.OscCommandData.changeWindowTitleStr,
+        OscCommandData.changeWindowTitleStr,
         outPtr.cast(),
       );
       if (!success) return null;
       final charPtr = outPtr.value;
-      if (charPtr == ffi.nullptr) return null;
+      if (charPtr == nullptr) return null;
       return charPtr.cast<Utf8>().toDartString();
     });
   }
@@ -1536,7 +1460,7 @@ class NativeBindings implements GhosttyBindings {
     );
   }
 
-  static RawColor _readNativeColor(native.StyleColor c) => (
+  static RawColor _readNativeColor(StyleColor c) => (
     tag: StyleColorTag.fromValue(c.tag.value),
     palette: c.value.palette,
     r: c.value.rgb.r,
@@ -1544,7 +1468,7 @@ class NativeBindings implements GhosttyBindings {
     b: c.value.rgb.b,
   );
 
-  static void _writeNativeColor(native.StyleColor ref, RawColor color) {
+  static void _writeNativeColor(StyleColor ref, RawColor color) {
     ref.tagAsInt = color.tag.value;
     ref.value.palette = color.palette;
     ref.value.rgb.r = color.r;
@@ -1634,41 +1558,35 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> buildInfo(BuildInfo data) {
-    final result = native.ghostty_build_info(data, _outI32.cast());
+    final result = ghostty_build_info(data, _outI32.cast());
     return (result, _outI32.value);
   }
 
   @override
   CResult<bool> buildInfoBool(BuildInfo data) {
-    final result = native.ghostty_build_info(data, _outBool.cast());
+    final result = ghostty_build_info(data, _outBool.cast());
     return (result, _outBool.value);
   }
 
   @override
   CResult<String> buildInfoString(BuildInfo data) {
-    final result = native.ghostty_build_info(data, _outGhosttyString.cast());
+    final result = ghostty_build_info(data, _outGhosttyString.cast());
     final ptr = _outGhosttyString.ref.ptr;
     final len = _outGhosttyString.ref.len;
-    if (len == 0 || ptr == ffi.nullptr) return (result, '');
+    if (len == 0 || ptr == nullptr) return (result, '');
     return (result, utf8.decode(ptr.asTypedList(len)));
   }
 
   @override
   CResult<String> modeReportEncode(int mode, ModeReportState state) {
     return using((arena) {
-      final outLen = arena<ffi.Size>();
-      final buf = arena<ffi.Char>(64);
-      final result = native.ghostty_mode_report_encode(
-        mode,
-        state,
-        buf,
-        64,
-        outLen,
-      );
+      final outLen = arena<Size>();
+      final buf = arena<Char>(64);
+      final result = ghostty_mode_report_encode(mode, state, buf, 64, outLen);
       final len = outLen.value;
       final encoded = len == 0
           ? ''
-          : utf8.decode(buf.cast<ffi.Uint8>().asTypedList(len));
+          : utf8.decode(buf.cast<Uint8>().asTypedList(len));
       return (result, encoded);
     });
   }
@@ -1682,14 +1600,14 @@ class NativeBindings implements GhosttyBindings {
     int cellHeight,
   ) {
     return using((arena) {
-      final size = arena<native.SizeReportSize>();
-      final outLen = arena<ffi.Size>();
-      final buf = arena<ffi.Char>(64);
+      final size = arena<SizeReportSize>();
+      final outLen = arena<Size>();
+      final buf = arena<Char>(64);
       size.ref.rows = rows;
       size.ref.columns = columns;
       size.ref.cell_width = cellWidth;
       size.ref.cell_height = cellHeight;
-      final result = native.ghostty_size_report_encode(
+      final result = ghostty_size_report_encode(
         style,
         size.ref,
         buf,
@@ -1699,7 +1617,7 @@ class NativeBindings implements GhosttyBindings {
       final len = outLen.value;
       final encoded = len == 0
           ? ''
-          : utf8.decode(buf.cast<ffi.Uint8>().asTypedList(len));
+          : utf8.decode(buf.cast<Uint8>().asTypedList(len));
       return (result, encoded);
     });
   }
@@ -1708,8 +1626,8 @@ class NativeBindings implements GhosttyBindings {
   Style styleDefault() {
     return using((arena) {
       final style = arena<native.Style>();
-      style.ref.size = ffi.sizeOf<native.Style>();
-      native.ghostty_style_default(style);
+      style.ref.size = sizeOf<native.Style>();
+      ghostty_style_default(style);
       return _readNativeStyle(style.ref);
     });
   }
@@ -1718,7 +1636,7 @@ class NativeBindings implements GhosttyBindings {
   bool styleIsDefault(Style style) {
     return using((arena) {
       final s = arena<native.Style>();
-      s.ref.size = ffi.sizeOf<native.Style>();
+      s.ref.size = sizeOf<native.Style>();
       _writeNativeColor(s.ref.fg_color, _cellColorToRaw(style.foreground));
       _writeNativeColor(s.ref.bg_color, _cellColorToRaw(style.background));
       _writeNativeColor(
@@ -1736,21 +1654,21 @@ class NativeBindings implements GhosttyBindings {
       s.ref.strikethrough = style.strikethrough;
       s.ref.overline = style.overline;
       s.ref.underline = style.underline.value;
-      return native.ghostty_style_is_default(s);
+      return ghostty_style_is_default(s);
     });
   }
 
   @override
   CResult<int> terminalGridRef(int terminal, PointTag pointTag, int x, int y) {
     return using((arena) {
-      final point = arena<native.Point>();
+      final point = arena<Point>();
       point.ref.tagAsInt = pointTag.value;
       point.ref.value.coordinate.x = x;
       point.ref.value.coordinate.y = y;
-      final gridRef = calloc<native.GridRef>();
-      gridRef.ref.size = ffi.sizeOf<native.GridRef>();
-      final result = native.ghostty_terminal_grid_ref(
-        ffi.Pointer.fromAddress(terminal),
+      final gridRef = calloc<GridRef>();
+      gridRef.ref.size = sizeOf<GridRef>();
+      final result = ghostty_terminal_grid_ref(
+        Pointer.fromAddress(terminal),
         point.ref,
         gridRef,
       );
@@ -1760,13 +1678,13 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   void gridRefFree(int ref) {
-    calloc.free(ffi.Pointer<ffi.Void>.fromAddress(ref));
+    calloc.free(Pointer<Void>.fromAddress(ref));
   }
 
   @override
   CResult<int> gridRefCell(int ref) {
-    final result = native.ghostty_grid_ref_cell(
-      ffi.Pointer.fromAddress(ref),
+    final result = ghostty_grid_ref_cell(
+      Pointer.fromAddress(ref),
       _outU64.cast(),
     );
     return (result, _outU64.value);
@@ -1774,8 +1692,8 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<int> gridRefRow(int ref) {
-    final result = native.ghostty_grid_ref_row(
-      ffi.Pointer.fromAddress(ref),
+    final result = ghostty_grid_ref_row(
+      Pointer.fromAddress(ref),
       _outU64.cast(),
     );
     return (result, _outU64.value);
@@ -1783,20 +1701,17 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   CResult<Style> gridRefStyle(int ref) {
-    _outStyle.ref.size = ffi.sizeOf<native.Style>();
-    final result = native.ghostty_grid_ref_style(
-      ffi.Pointer.fromAddress(ref),
-      _outStyle,
-    );
+    _outStyle.ref.size = sizeOf<native.Style>();
+    final result = ghostty_grid_ref_style(Pointer.fromAddress(ref), _outStyle);
     return (result, _readNativeStyle(_outStyle.ref));
   }
 
   @override
   CResult<List<int>> gridRefGraphemes(int ref) {
     return using((arena) {
-      final outLen = arena<ffi.Size>();
-      var result = native.ghostty_grid_ref_graphemes(
-        ffi.Pointer.fromAddress(ref),
+      final outLen = arena<Size>();
+      var result = ghostty_grid_ref_graphemes(
+        Pointer.fromAddress(ref),
         _graphemeBuf,
         32,
         outLen,
@@ -1804,9 +1719,9 @@ class NativeBindings implements GhosttyBindings {
       var len = outLen.value;
 
       if (result == Result.outOfSpace) {
-        final bigBuf = arena<ffi.Uint32>(len);
-        result = native.ghostty_grid_ref_graphemes(
-          ffi.Pointer.fromAddress(ref),
+        final bigBuf = arena<Uint32>(len);
+        result = ghostty_grid_ref_graphemes(
+          Pointer.fromAddress(ref),
           bigBuf,
           len,
           outLen,
@@ -1828,16 +1743,16 @@ class NativeBindings implements GhosttyBindings {
     FormatterExtra extra = const FormatterExtra(),
   }) {
     return using((arena) {
-      final ptr = arena<ffi.Pointer<native.FormatterImpl>>();
-      final opts = arena<native.FormatterTerminalOptions>();
+      final ptr = arena<Pointer<FormatterImpl>>();
+      final opts = arena<FormatterTerminalOptions>();
       opts.ref
-        ..size = ffi.sizeOf<native.FormatterTerminalOptions>()
+        ..size = sizeOf<FormatterTerminalOptions>()
         ..emitAsInt = format.value
         ..unwrap = unwrap
         ..trim = trim;
 
       opts.ref.extra
-        ..size = ffi.sizeOf<native.FormatterTerminalExtra>()
+        ..size = sizeOf<FormatterTerminalExtra>()
         ..palette = extra.palette
         ..modes = extra.modes
         ..scrolling_region = extra.scrollingRegion
@@ -1846,7 +1761,7 @@ class NativeBindings implements GhosttyBindings {
         ..keyboard = extra.keyboard;
 
       opts.ref.extra.screen
-        ..size = ffi.sizeOf<native.FormatterScreenExtra>()
+        ..size = sizeOf<FormatterScreenExtra>()
         ..cursor = extra.cursor
         ..style = extra.style
         ..hyperlink = extra.hyperlink
@@ -1854,10 +1769,10 @@ class NativeBindings implements GhosttyBindings {
         ..kitty_keyboard = extra.kittyKeyboard
         ..charsets = extra.charsets;
 
-      final result = native.ghostty_formatter_terminal_new(
-        ffi.nullptr,
+      final result = ghostty_formatter_terminal_new(
+        nullptr,
         ptr.cast(),
-        ffi.Pointer.fromAddress(terminal),
+        Pointer.fromAddress(terminal),
         opts.ref,
       );
       return (result, ptr.value.address);
@@ -1866,25 +1781,25 @@ class NativeBindings implements GhosttyBindings {
 
   @override
   void formatterFree(int formatter) {
-    native.ghostty_formatter_free(ffi.Pointer.fromAddress(formatter));
+    ghostty_formatter_free(Pointer.fromAddress(formatter));
   }
 
   @override
   CResult<String> formatterFormat(int formatter) {
     return using((arena) {
-      final outPtr = arena<ffi.Pointer<ffi.Uint8>>();
-      final outLen = arena<ffi.Size>();
-      final result = native.ghostty_formatter_format_alloc(
-        ffi.Pointer.fromAddress(formatter),
-        ffi.nullptr,
+      final outPtr = arena<Pointer<Uint8>>();
+      final outLen = arena<Size>();
+      final result = ghostty_formatter_format_alloc(
+        Pointer.fromAddress(formatter),
+        nullptr,
         outPtr,
         outLen,
       );
       final len = outLen.value;
       final buf = outPtr.value;
-      if (len == 0 || buf == ffi.nullptr) return (result, '');
-      final encoded = utf8.decode(buf.cast<ffi.Uint8>().asTypedList(len));
-      native.ghostty_free(ffi.nullptr, buf, len);
+      if (len == 0 || buf == nullptr) return (result, '');
+      final encoded = utf8.decode(buf.cast<Uint8>().asTypedList(len));
+      ghostty_free(nullptr, buf, len);
       return (result, encoded);
     });
   }
@@ -1892,40 +1807,35 @@ class NativeBindings implements GhosttyBindings {
   @override
   void terminalSetOnWritePty(int handle, ValueSetter<Uint8List>? callback) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.writePty]?.close();
+    map[TerminalOption.writePty]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.writePty);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.writePty,
-        ffi.nullptr,
+      map.remove(TerminalOption.writePty);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.writePty,
+        nullptr,
       );
       return;
     }
 
     final callable =
-        ffi.NativeCallable<
-          ffi.Void Function(
-            native.Terminal,
-            ffi.Pointer<ffi.Void>,
-            ffi.Pointer<ffi.Uint8>,
-            ffi.Size,
-          )
+        NativeCallable<
+          Void Function(Terminal, Pointer<Void>, Pointer<Uint8>, Size)
         >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ffi.Uint8> data,
+          Terminal terminal,
+          Pointer<Void> userdata,
+          Pointer<Uint8> data,
           int len,
         ) {
           try {
             callback(Uint8List.fromList(data.asTypedList(len)));
           } on Object catch (_) {}
         });
-    map[native.TerminalOption.writePty] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.writePty,
+    map[TerminalOption.writePty] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.writePty,
       callable.nativeFunction.cast(),
     );
   }
@@ -1933,33 +1843,31 @@ class NativeBindings implements GhosttyBindings {
   @override
   void terminalSetOnBell(int handle, VoidCallback? callback) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.bell]?.close();
+    map[TerminalOption.bell]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.bell);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.bell,
-        ffi.nullptr,
+      map.remove(TerminalOption.bell);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.bell,
+        nullptr,
       );
       return;
     }
 
     final callable =
-        ffi.NativeCallable<
-          ffi.Void Function(native.Terminal, ffi.Pointer<ffi.Void>)
-        >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
+        NativeCallable<Void Function(Terminal, Pointer<Void>)>.isolateLocal((
+          Terminal terminal,
+          Pointer<Void> userdata,
         ) {
           try {
             callback();
           } on Object catch (_) {}
         });
-    map[native.TerminalOption.bell] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.bell,
+    map[TerminalOption.bell] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.bell,
       callable.nativeFunction.cast(),
     );
   }
@@ -1967,33 +1875,31 @@ class NativeBindings implements GhosttyBindings {
   @override
   void terminalSetOnTitleChanged(int handle, VoidCallback? callback) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.titleChanged]?.close();
+    map[TerminalOption.titleChanged]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.titleChanged);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.titleChanged,
-        ffi.nullptr,
+      map.remove(TerminalOption.titleChanged);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.titleChanged,
+        nullptr,
       );
       return;
     }
 
     final callable =
-        ffi.NativeCallable<
-          ffi.Void Function(native.Terminal, ffi.Pointer<ffi.Void>)
-        >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
+        NativeCallable<Void Function(Terminal, Pointer<Void>)>.isolateLocal((
+          Terminal terminal,
+          Pointer<Void> userdata,
         ) {
           try {
             callback();
           } on Object catch (_) {}
         });
-    map[native.TerminalOption.titleChanged] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.titleChanged,
+    map[TerminalOption.titleChanged] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.titleChanged,
       callable.nativeFunction.cast(),
     );
   }
@@ -2001,58 +1907,50 @@ class NativeBindings implements GhosttyBindings {
   @override
   void terminalSetOnEnquiry(int handle, ValueGetter<Uint8List>? callback) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.enquiry]?.close();
+    map[TerminalOption.enquiry]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.enquiry);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.enquiry,
-        ffi.nullptr,
+      map.remove(TerminalOption.enquiry);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.enquiry,
+        nullptr,
       );
       return;
     }
 
     final bufMap = _stringBuffers.putIfAbsent(handle, () => {});
     final strPtr =
-        bufMap[native.TerminalOption.enquiry]?.str ?? calloc<native.String>();
-    bufMap[native.TerminalOption.enquiry] = (
+        bufMap[TerminalOption.enquiry]?.str ?? calloc<native.String>();
+    bufMap[TerminalOption.enquiry] = (
       str: strPtr,
-      data:
-          bufMap[native.TerminalOption.enquiry]?.data ??
-          ffi.nullptr.cast<ffi.Uint8>(),
+      data: bufMap[TerminalOption.enquiry]?.data ?? nullptr.cast<Uint8>(),
     );
 
     final callable =
-        ffi.NativeCallable<
-          native.String Function(native.Terminal, ffi.Pointer<ffi.Void>)
-        >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-        ) {
+        NativeCallable<
+          native.String Function(Terminal, Pointer<Void>)
+        >.isolateLocal((Terminal terminal, Pointer<Void> userdata) {
           try {
             final bytes = callback();
-            final current = bufMap[native.TerminalOption.enquiry]!;
-            if (current.data != ffi.nullptr) calloc.free(current.data);
-            final dataPtr = calloc<ffi.Uint8>(bytes.length);
+            final current = bufMap[TerminalOption.enquiry]!;
+            if (current.data != nullptr) calloc.free(current.data);
+            final dataPtr = calloc<Uint8>(bytes.length);
             dataPtr.asTypedList(bytes.length).setAll(0, bytes);
-            bufMap[native.TerminalOption.enquiry] = (
-              str: strPtr,
-              data: dataPtr,
-            );
+            bufMap[TerminalOption.enquiry] = (str: strPtr, data: dataPtr);
             strPtr.ref.ptr = dataPtr;
             strPtr.ref.len = bytes.length;
             return strPtr.ref;
           } on Object catch (_) {
-            strPtr.ref.ptr = ffi.nullptr;
+            strPtr.ref.ptr = nullptr;
             strPtr.ref.len = 0;
             return strPtr.ref;
           }
         });
-    map[native.TerminalOption.enquiry] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.enquiry,
+    map[TerminalOption.enquiry] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.enquiry,
       callable.nativeFunction.cast(),
     );
   }
@@ -2060,59 +1958,51 @@ class NativeBindings implements GhosttyBindings {
   @override
   void terminalSetOnXtversion(int handle, ValueGetter<String>? callback) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.xtversion]?.close();
+    map[TerminalOption.xtversion]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.xtversion);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.xtversion,
-        ffi.nullptr,
+      map.remove(TerminalOption.xtversion);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.xtversion,
+        nullptr,
       );
       return;
     }
 
     final bufMap = _stringBuffers.putIfAbsent(handle, () => {});
     final strPtr =
-        bufMap[native.TerminalOption.xtversion]?.str ?? calloc<native.String>();
-    bufMap[native.TerminalOption.xtversion] = (
+        bufMap[TerminalOption.xtversion]?.str ?? calloc<native.String>();
+    bufMap[TerminalOption.xtversion] = (
       str: strPtr,
-      data:
-          bufMap[native.TerminalOption.xtversion]?.data ??
-          ffi.nullptr.cast<ffi.Uint8>(),
+      data: bufMap[TerminalOption.xtversion]?.data ?? nullptr.cast<Uint8>(),
     );
 
     final callable =
-        ffi.NativeCallable<
-          native.String Function(native.Terminal, ffi.Pointer<ffi.Void>)
-        >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-        ) {
+        NativeCallable<
+          native.String Function(Terminal, Pointer<Void>)
+        >.isolateLocal((Terminal terminal, Pointer<Void> userdata) {
           try {
             final result = callback();
             final bytes = utf8.encode(result);
-            final current = bufMap[native.TerminalOption.xtversion]!;
-            if (current.data != ffi.nullptr) calloc.free(current.data);
-            final dataPtr = calloc<ffi.Uint8>(bytes.length);
+            final current = bufMap[TerminalOption.xtversion]!;
+            if (current.data != nullptr) calloc.free(current.data);
+            final dataPtr = calloc<Uint8>(bytes.length);
             dataPtr.asTypedList(bytes.length).setAll(0, bytes);
-            bufMap[native.TerminalOption.xtversion] = (
-              str: strPtr,
-              data: dataPtr,
-            );
+            bufMap[TerminalOption.xtversion] = (str: strPtr, data: dataPtr);
             strPtr.ref.ptr = dataPtr;
             strPtr.ref.len = bytes.length;
             return strPtr.ref;
           } on Object catch (_) {
-            strPtr.ref.ptr = ffi.nullptr;
+            strPtr.ref.ptr = nullptr;
             strPtr.ref.len = 0;
             return strPtr.ref;
           }
         });
-    map[native.TerminalOption.xtversion] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.xtversion,
+    map[TerminalOption.xtversion] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.xtversion,
       callable.nativeFunction.cast(),
     );
   }
@@ -2123,29 +2013,25 @@ class NativeBindings implements GhosttyBindings {
     ValueGetter<ColorScheme?>? callback,
   ) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.colorScheme]?.close();
+    map[TerminalOption.colorScheme]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.colorScheme);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.colorScheme,
-        ffi.nullptr,
+      map.remove(TerminalOption.colorScheme);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.colorScheme,
+        nullptr,
       );
       return;
     }
 
     final callable =
-        ffi.NativeCallable<
-          ffi.Bool Function(
-            native.Terminal,
-            ffi.Pointer<ffi.Void>,
-            ffi.Pointer<ffi.UnsignedInt>,
-          )
+        NativeCallable<
+          Bool Function(Terminal, Pointer<Void>, Pointer<UnsignedInt>)
         >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<ffi.UnsignedInt> outScheme,
+          Terminal terminal,
+          Pointer<Void> userdata,
+          Pointer<UnsignedInt> outScheme,
         ) {
           try {
             final result = callback();
@@ -2156,10 +2042,10 @@ class NativeBindings implements GhosttyBindings {
             return false;
           }
         }, exceptionalReturn: false);
-    map[native.TerminalOption.colorScheme] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.colorScheme,
+    map[TerminalOption.colorScheme] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.colorScheme,
       callable.nativeFunction.cast(),
     );
   }
@@ -2167,29 +2053,25 @@ class NativeBindings implements GhosttyBindings {
   @override
   void terminalSetOnSize(int handle, ValueGetter<TerminalSizeInfo?>? callback) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.size]?.close();
+    map[TerminalOption.size]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.size);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.size,
-        ffi.nullptr,
+      map.remove(TerminalOption.size);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.size,
+        nullptr,
       );
       return;
     }
 
     final callable =
-        ffi.NativeCallable<
-          ffi.Bool Function(
-            native.Terminal,
-            ffi.Pointer<ffi.Void>,
-            ffi.Pointer<native.SizeReportSize>,
-          )
+        NativeCallable<
+          Bool Function(Terminal, Pointer<Void>, Pointer<SizeReportSize>)
         >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<native.SizeReportSize> outSize,
+          Terminal terminal,
+          Pointer<Void> userdata,
+          Pointer<SizeReportSize> outSize,
         ) {
           try {
             final result = callback();
@@ -2203,10 +2085,10 @@ class NativeBindings implements GhosttyBindings {
             return false;
           }
         }, exceptionalReturn: false);
-    map[native.TerminalOption.size] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.size,
+    map[TerminalOption.size] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.size,
       callable.nativeFunction.cast(),
     );
   }
@@ -2217,29 +2099,25 @@ class NativeBindings implements GhosttyBindings {
     ValueGetter<DeviceAttributesResponse?>? callback,
   ) {
     final map = _callables.putIfAbsent(handle, () => {});
-    map[native.TerminalOption.deviceAttributes]?.close();
+    map[TerminalOption.deviceAttributes]?.close();
 
     if (callback == null) {
-      map.remove(native.TerminalOption.deviceAttributes);
-      native.ghostty_terminal_set(
-        ffi.Pointer.fromAddress(handle),
-        native.TerminalOption.deviceAttributes,
-        ffi.nullptr,
+      map.remove(TerminalOption.deviceAttributes);
+      ghostty_terminal_set(
+        Pointer.fromAddress(handle),
+        TerminalOption.deviceAttributes,
+        nullptr,
       );
       return;
     }
 
     final callable =
-        ffi.NativeCallable<
-          ffi.Bool Function(
-            native.Terminal,
-            ffi.Pointer<ffi.Void>,
-            ffi.Pointer<native.DeviceAttributes>,
-          )
+        NativeCallable<
+          Bool Function(Terminal, Pointer<Void>, Pointer<DeviceAttributes>)
         >.isolateLocal((
-          native.Terminal terminal,
-          ffi.Pointer<ffi.Void> userdata,
-          ffi.Pointer<native.DeviceAttributes> outAttrs,
+          Terminal terminal,
+          Pointer<Void> userdata,
+          Pointer<DeviceAttributes> outAttrs,
         ) {
           try {
             final result = callback();
@@ -2264,10 +2142,10 @@ class NativeBindings implements GhosttyBindings {
             return false;
           }
         }, exceptionalReturn: false);
-    map[native.TerminalOption.deviceAttributes] = callable;
-    native.ghostty_terminal_set(
-      ffi.Pointer.fromAddress(handle),
-      native.TerminalOption.deviceAttributes,
+    map[TerminalOption.deviceAttributes] = callable;
+    ghostty_terminal_set(
+      Pointer.fromAddress(handle),
+      TerminalOption.deviceAttributes,
       callable.nativeFunction.cast(),
     );
   }
@@ -2276,11 +2154,7 @@ class NativeBindings implements GhosttyBindings {
   void terminalDisposeCallbacks(int handle) {
     if (_callables.remove(handle) case Map(:final keys, :final values)) {
       for (final option in keys) {
-        native.ghostty_terminal_set(
-          ffi.Pointer.fromAddress(handle),
-          option,
-          ffi.nullptr,
-        );
+        ghostty_terminal_set(Pointer.fromAddress(handle), option, nullptr);
       }
       for (final c in values) {
         c.close();
@@ -2289,7 +2163,7 @@ class NativeBindings implements GhosttyBindings {
 
     if (_stringBuffers.remove(handle) case Map(:final values)) {
       for (final buf in values) {
-        if (buf.data != ffi.nullptr) calloc.free(buf.data);
+        if (buf.data != nullptr) calloc.free(buf.data);
         calloc.free(buf.str);
       }
     }
