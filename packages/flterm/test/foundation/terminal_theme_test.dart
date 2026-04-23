@@ -242,7 +242,7 @@ void main() {
     test('defaults: boldIsBright, faintOpacity, minimumContrast, '
         'fontFamilyFallback', () {
       final theme = TerminalTheme.dark();
-      expect(theme.boldIsBright, isTrue);
+      expect(theme.boldIsBright, isFalse);
       expect(theme.faintOpacity, 0.5);
       expect(theme.minimumContrast, 1.0);
       expect(theme.fontFamilyFallback, isNotEmpty);
@@ -265,22 +265,17 @@ void main() {
     });
 
     test('backgroundOpacity must be in [0.0, 1.0]', () {
+      final palette = ColorPalette(
+        ansiColors: List.filled(16, const Color(0xFF000000)),
+        background: const Color(0xFF000000),
+        foreground: const Color(0xFFFFFFFF),
+      );
       expect(
-        () => TerminalTheme(
-          foreground: const Color(0xFFFFFFFF),
-          background: const Color(0xFF000000),
-          ansiColors: List.filled(16, const Color(0xFF000000)),
-          backgroundOpacity: -0.1,
-        ),
+        () => TerminalTheme(palette: palette, backgroundOpacity: -0.1),
         throwsAssertionError,
       );
       expect(
-        () => TerminalTheme(
-          foreground: const Color(0xFFFFFFFF),
-          background: const Color(0xFF000000),
-          ansiColors: List.filled(16, const Color(0xFF000000)),
-          backgroundOpacity: 1.1,
-        ),
+        () => TerminalTheme(palette: palette, backgroundOpacity: 1.1),
         throwsAssertionError,
       );
     });
@@ -318,8 +313,17 @@ void main() {
       final b = TerminalTheme.dark();
       expect(a, equals(b));
       expect(a.hashCode, b.hashCode);
-      expect(a, isNot(equals(a.copyWith(foreground: const Color(0xFFFFFFFF)))));
-      expect(a, isNot(equals(a.copyWith(boldIsBright: false))));
+      expect(
+        a,
+        isNot(
+          equals(
+            a.copyWith(
+              palette: a.palette.copyWith(foreground: const Color(0xFFFFFFFF)),
+            ),
+          ),
+        ),
+      );
+      expect(a, isNot(equals(a.copyWith(boldIsBright: true))));
       expect(a, isNot(equals(a.copyWith(faintOpacity: 0.3))));
       expect(a, isNot(equals(a.copyWith(minimumContrast: 4.5))));
       expect(a, isNot(equals(a.copyWith(fontFamilyFallback: ['Menlo']))));
@@ -340,8 +344,8 @@ void main() {
     test('copyWith replaces fields and preserves the rest', () {
       final original = TerminalTheme.dark();
       final modified = original.copyWith(
-        foreground: const Color(0xFFFFFFFF),
-        boldIsBright: false,
+        palette: original.palette.copyWith(foreground: const Color(0xFFFFFFFF)),
+        boldIsBright: true,
         faintOpacity: 0.3,
         minimumContrast: 4.5,
         fontFamily: 'Fira Code',
@@ -349,22 +353,26 @@ void main() {
         selection: const SelectionTheme(foreground: Color(0xFF000000)),
       );
       expect(modified.foreground, const Color(0xFFFFFFFF));
-      expect(modified.boldIsBright, isFalse);
+      expect(modified.boldIsBright, isTrue);
       expect(modified.faintOpacity, 0.3);
       expect(modified.minimumContrast, 4.5);
       expect(modified.fontFamilyFallback, ['Fira Code', 'Menlo']);
       expect(modified.background, original.background);
     });
 
-    test('copyWith without ansiColors reuses palette', () {
+    test('copyWith without palette reuses the same instance', () {
       final original = TerminalTheme.dark();
       final modified = original.copyWith(
-        foreground: const Color(0xFFFF0000),
-        background: const Color(0xFF000000),
         cursor: const CursorTheme(shape: CursorShape.bar),
         hyperlink: const HyperlinkTheme(),
       );
-      expect(modified.palette, equals(original.palette));
+      expect(identical(modified.palette, original.palette), isTrue);
+    });
+
+    test('background and foreground delegate to palette', () {
+      final theme = TerminalTheme.dark();
+      expect(theme.background, theme.palette.background);
+      expect(theme.foreground, theme.palette.foreground);
     });
 
     test('lerp at boundaries returns endpoints', () {
