@@ -1,5 +1,45 @@
 # Changelog
 
+## 0.0.2
+
+### Breaking
+
+- **Theme colors move into `ColorPalette`**: `TerminalTheme` no longer
+  takes `background`, `foreground`, and `ansiColors` directly. Build a
+  `ColorPalette` once and pass it in, so palettes are something you
+  can share, swap, or `copyWith` on their own.
+- **Cursor and selection colors can adapt to the cell under them**: the
+  color fields take `DynamicColor?` now. Use
+  `DynamicColor.cellForeground()` / `.cellBackground()` to follow the
+  cell, or `DynamicColor.fixed(c)` for the old static behavior.
+- **`selectedText` is a method**: call `controller.selectedText()` for
+  plain text, or pass a `FormatterFormat` to get VT or HTML for
+  rich-clipboard copy.
+- **Bold no longer switches to the bright palette by default**: expect
+  slightly different bold colors; set `boldIsBright: true` to restore
+  the old behavior.
+
+### Added
+
+- **Kitty graphics**: programs that emit images (previewers, image
+  viewers, some editors) render inside the widget. Cap the cache via
+  `TerminalConfig.kittyImageStorageLimit`; zero disables.
+- **Transparent background**: `TerminalTheme.backgroundOpacity` makes
+  the default background translucent so the terminal can compose over
+  a translucent window or other widgets. `backgroundOpacityCells`
+  extends it to cells with their own bg color.
+- **More theme knobs**: `CursorTheme.text` (glyph color under a block
+  cursor), `TerminalTheme.boldColor` (forced bold color), and
+  `SelectionTheme.foreground` (selected-glyph tint).
+- **`ColorPalette.generated()`**: derives indices 16–255 from your base
+  16 plus background and foreground so the extended palette blends
+  instead of clashing with the fixed xterm cube.
+
+### Changed
+
+- **Dirty-row rendering**: frames rebuild only rows that changed, so
+  idle terminals cost much less CPU.
+
 ## 0.0.1
 
 Initial release.

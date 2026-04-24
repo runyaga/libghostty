@@ -35,7 +35,7 @@ libghostty-vt engine.
 
 ```yaml
 dependencies:
-  flterm: ^0.0.1
+  flterm: ^0.0.2
 ```
 
 On web, initialize the wasm module once before mounting any terminal:
@@ -93,9 +93,11 @@ Custom themes are constructed directly:
 TerminalView(
   controller: controller,
   theme: TerminalTheme(
-    foreground: const Color(0xFFC5C8C6),
-    background: const Color(0xFF1D1F21),
-    ansiColors: const [/* 16 ANSI colors */],
+    palette: ColorPalette(
+      ansiColors: const [/* 16 ANSI colors */],
+      background: const Color(0xFF1D1F21),
+      foreground: const Color(0xFFC5C8C6),
+    ),
     fontFamily: 'JetBrains Mono',
     fontSize: 14,
     cursor: const CursorTheme(shape: CursorShape.bar),
