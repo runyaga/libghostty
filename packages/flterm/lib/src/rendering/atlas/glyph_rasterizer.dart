@@ -18,8 +18,8 @@ import 'glyph_entry.dart';
 /// color tinting via [BlendMode.modulate]. Emoji are rasterized in full
 /// color and composited with scaling to fit within the cell bounds.
 class GlyphRasterizer {
-  static const _initialSize = 1024;
-  static const _maxSize = 4096;
+  static const _defaultInitialSize = 1024;
+  static const _defaultMaxSize = 4096;
 
   // Gap between atlas cells prevents sub-pixel bleed between sprites.
   static const _padding = 1.0;
@@ -30,8 +30,11 @@ class GlyphRasterizer {
   final _compositePaint = Paint();
   final _spriteContext = SpriteContext();
 
-  var _width = _initialSize;
-  var _height = _initialSize;
+  final int _initialSize;
+  final int _maxSize;
+
+  late int _width;
+  late int _height;
   var _packX = 0.0;
   var _packY = 0.0;
   var _rowHeight = 0.0;
@@ -59,6 +62,17 @@ class GlyphRasterizer {
   var _pxItalicOverhang = 0.0;
 
   Image? image;
+
+  GlyphRasterizer({
+    int initialSize = _defaultInitialSize,
+    int maxSize = _defaultMaxSize,
+  }) : assert(initialSize > 0, 'initialSize must be positive'),
+       assert(maxSize >= initialSize, 'maxSize must be >= initialSize'),
+       _initialSize = initialSize,
+       _maxSize = maxSize {
+    _width = initialSize;
+    _height = initialSize;
+  }
 
   void clear() {
     _disposePending();
@@ -552,25 +566,86 @@ class GlyphRasterizer {
     _pending.clear();
   }
 
-  /// Doubles the smaller atlas dimension (alternating width/height)
-  /// so the texture stays roughly square as it grows toward [_maxSize].
-  void _grow() {
-    if (_width <= _height && _width < _maxSize) {
+  /// Doubles one atlas dimension so the texture stays roughly square as it
+  /// grows toward [_maxSize]. Returns false when both dimensions are maxed.
+  bool _grow() {
+    if ((_width <= _height && _width < _maxSize) ||
+        (_height >= _maxSize && _width < _maxSize)) {
       _width = min(_width * 2, _maxSize);
+      return true;
     } else if (_height < _maxSize) {
       _height = min(_height * 2, _maxSize);
+      return true;
     }
+    return false;
   }
 
   /// Row-based bin packing: fills left-to-right within the current row,
   /// wraps to the next row when the glyph won't fit, and grows the
   /// atlas if vertical space is exhausted.
   void _pack(double width, double height) {
+    if (width + _padding > _maxSize || height + _padding > _maxSize) {
+      throw GlyphAtlasFullException(
+        requestedWidth: width,
+        requestedHeight: height,
+        atlasWidth: _width,
+        atlasHeight: _height,
+        maxSize: _maxSize,
+      );
+    }
+
+    while (width + _padding > _width || height + _padding > _height) {
+      if (!_grow()) {
+        throw GlyphAtlasFullException(
+          requestedWidth: width,
+          requestedHeight: height,
+          atlasWidth: _width,
+          atlasHeight: _height,
+          maxSize: _maxSize,
+        );
+      }
+    }
+
     if (_packX + width + _padding > _width) {
       _packX = 0;
       _packY += _rowHeight + _padding;
       _rowHeight = 0;
     }
-    if (_packY + height + _padding > _height) _grow();
+
+    while (_packY + height + _padding > _height) {
+      if (!_grow()) {
+        throw GlyphAtlasFullException(
+          requestedWidth: width,
+          requestedHeight: height,
+          atlasWidth: _width,
+          atlasHeight: _height,
+          maxSize: _maxSize,
+        );
+      }
+    }
   }
+}
+
+/// Thrown when a glyph or sprite cannot fit inside the configured atlas limit.
+class GlyphAtlasFullException implements Exception {
+  final double requestedWidth;
+  final double requestedHeight;
+  final int atlasWidth;
+  final int atlasHeight;
+  final int maxSize;
+
+  const GlyphAtlasFullException({
+    required this.requestedWidth,
+    required this.requestedHeight,
+    required this.atlasWidth,
+    required this.atlasHeight,
+    required this.maxSize,
+  });
+
+  @override
+  String toString() =>
+      'GlyphAtlasFullException: requested '
+      '${requestedWidth.toStringAsFixed(1)}x'
+      '${requestedHeight.toStringAsFixed(1)} in ${atlasWidth}x$atlasHeight '
+      'atlas with max size $maxSize';
 }
