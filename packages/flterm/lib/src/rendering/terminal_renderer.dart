@@ -4,6 +4,7 @@ import 'package:libghostty/libghostty.dart';
 
 import '../foundation.dart';
 import 'atlas/atlas_config.dart';
+import 'atlas/atlas_entry.dart';
 import 'atlas/sprite_buffer.dart';
 import 'kitty_image_cache.dart';
 import 'paint_state.dart';
@@ -698,50 +699,10 @@ class TerminalRenderBox extends RenderBox {
   // Builds the block cursor glyph from cached cursor cell data.
   // Called after cursor resolution and on focus changes.
   void _resolveCursorGlyph() {
-    _paintState.cursorAtlasEntry = null;
     final cell = _lastCursorCell;
-    if (cell == null ||
-        !_paintState.cursorFocused ||
-        _lastCursor.shape != CursorShape.block) {
-      return;
-    }
-    final style = cell.style;
-    if (cell.content.isEmpty ||
-        style.invisible ||
-        (style.blink && !_paintState.blinkVisible)) {
-      return;
-    }
-    final runes = cell.content.runes;
-    if (runes.length == 1) {
-      final codepoint = runes.first;
-      final span = cell.wide ? 2 : 1;
-      if (cell.wide &&
-          !_atlasHandle.atlas.hasSprite(codepoint) &&
-          !isCjkCodepoint(codepoint)) {
-        _paintState.cursorAtlasEntry = _atlasHandle.atlas.add(
-          (text: cell.content, bold: style.bold, italic: style.italic),
-          span: span,
-          emoji: true,
-        );
-      } else {
-        _paintState.cursorAtlasEntry = _atlasHandle.atlas.addCodepoint(
-          codepoint,
-          bold: style.bold,
-          italic: style.italic,
-          span: span,
-        );
-      }
-    } else {
-      final codepoint = runes.first;
-      final emoji =
-          cell.content.contains('\uFE0F') ||
-          (cell.wide && !isCjkCodepoint(codepoint));
-      _paintState.cursorAtlasEntry = _atlasHandle.atlas.add(
-        (text: cell.content, bold: style.bold, italic: style.italic),
-        span: cell.wide ? 2 : 1,
-        emoji: emoji,
-      );
-    }
+    final entry = _cursorAtlasEntry(cell);
+    _paintState.cursorAtlasEntry = entry;
+    if (entry == null || cell == null) return;
 
     // The character under a block cursor paints in [CursorTheme.text] (or
     // the terminal background when unset) so it contrasts with the cursor
@@ -756,6 +717,56 @@ class TerminalRenderBox extends RenderBox {
     _paintState.cursorGlyphPaint.colorFilter = ColorFilter.mode(
       glyphColor,
       BlendMode.modulate,
+    );
+  }
+
+  AtlasEntry? _cursorAtlasEntry(CursorCell? cell) {
+    if (cell == null ||
+        !_paintState.cursorFocused ||
+        _lastCursor.shape != CursorShape.block) {
+      return null;
+    }
+    final style = cell.style;
+    if (cell.content.isEmpty ||
+        style.invisible ||
+        (style.blink && !_paintState.blinkVisible)) {
+      return null;
+    }
+
+    final runes = cell.content.runes;
+    final codepoint = runes.first;
+    final span = cell.wide ? 2 : 1;
+    if (runes.length == 1) {
+      if (cell.wide &&
+          !_atlasHandle.atlas.hasSprite(codepoint) &&
+          !isCjkCodepoint(codepoint)) {
+        return _cursorTextEntry(cell, codepoint, span: span);
+      }
+
+      return _atlasHandle.atlas.addCodepoint(
+        codepoint,
+        bold: style.bold,
+        italic: style.italic,
+        span: span,
+      );
+    }
+
+    return _cursorTextEntry(cell, codepoint, span: span);
+  }
+
+  AtlasEntry _cursorTextEntry(
+    CursorCell cell,
+    int codepoint, {
+    required int span,
+  }) {
+    final style = cell.style;
+    final emoji =
+        cell.content.contains('\uFE0F') ||
+        (cell.wide && !isCjkCodepoint(codepoint));
+    return _atlasHandle.atlas.add(
+      (text: cell.content, bold: style.bold, italic: style.italic),
+      span: span,
+      emoji: emoji,
     );
   }
 
