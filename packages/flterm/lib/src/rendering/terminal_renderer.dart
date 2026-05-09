@@ -4,8 +4,8 @@ import 'package:libghostty/libghostty.dart';
 
 import '../foundation.dart';
 import 'atlas/atlas_config.dart';
-import 'atlas/atlas_entry.dart';
 import 'atlas/sprite_buffer.dart';
+import 'cursor_atlas_resolver.dart';
 import 'kitty_image_cache.dart';
 import 'paint_state.dart';
 import 'painters/background_painter.dart';
@@ -18,24 +18,6 @@ import 'painters/terminal_text_painter.dart';
 import 'painters/underline_painter.dart';
 import 'sprite_builder.dart';
 import 'terminal_render_cache.dart';
-
-/// Pre-fetched cell data at the cursor position.
-///
-/// Snapshot of the cell under the cursor, taken during state sync so the
-/// cursor painter can render the character glyph inside a block cursor
-/// without accessing the terminal during paint.
-class CursorCell {
-  /// Text content of the cell (grapheme cluster).
-  final String content;
-
-  /// Style attributes (bold, italic, blink, inverse, etc.).
-  final Style style;
-
-  /// Whether this is a wide (2-cell) character.
-  final bool wide;
-
-  const CursorCell(this.content, this.style, {required this.wide});
-}
 
 /// Renders a terminal screen with cell backgrounds, styled text, cursors,
 /// and selection overlays.
@@ -206,6 +188,7 @@ class TerminalRenderBox extends RenderBox {
 
   late final SpriteBuffer _sprites;
   late SpriteBuilder _spriteBuilder;
+  late CursorAtlasResolver _cursorAtlasResolver;
   final _renderState = RenderState();
 
   late EmojiPainter _emojiPainter;
@@ -536,6 +519,7 @@ class TerminalRenderBox extends RenderBox {
   void _bindAtlasDependents() {
     final atlas = _atlasHandle.atlas;
     _spriteBuilder = SpriteBuilder(atlas, _sprites, _paintState);
+    _cursorAtlasResolver = CursorAtlasResolver(atlas);
     _textPainter = TerminalTextPainter(atlas, _sprites.wide, _sprites.regular);
     _spritePainter = SpritePainter(atlas, _sprites);
     _cursorPainter = CursorPainter(_paintState, atlas);
@@ -700,7 +684,12 @@ class TerminalRenderBox extends RenderBox {
   // Called after cursor resolution and on focus changes.
   void _resolveCursorGlyph() {
     final cell = _lastCursorCell;
-    final entry = _cursorAtlasEntry(cell);
+    final entry = _cursorAtlasResolver.resolve(
+      cell: cell,
+      shape: _lastCursor.shape,
+      focused: _paintState.cursorFocused,
+      blinkVisible: _paintState.blinkVisible,
+    );
     _paintState.cursorAtlasEntry = entry;
     if (entry == null || cell == null) return;
 
@@ -717,56 +706,6 @@ class TerminalRenderBox extends RenderBox {
     _paintState.cursorGlyphPaint.colorFilter = ColorFilter.mode(
       glyphColor,
       BlendMode.modulate,
-    );
-  }
-
-  AtlasEntry? _cursorAtlasEntry(CursorCell? cell) {
-    if (cell == null ||
-        !_paintState.cursorFocused ||
-        _lastCursor.shape != CursorShape.block) {
-      return null;
-    }
-    final style = cell.style;
-    if (cell.content.isEmpty ||
-        style.invisible ||
-        (style.blink && !_paintState.blinkVisible)) {
-      return null;
-    }
-
-    final runes = cell.content.runes;
-    final codepoint = runes.first;
-    final span = cell.wide ? 2 : 1;
-    if (runes.length == 1) {
-      if (cell.wide &&
-          !_atlasHandle.atlas.hasSprite(codepoint) &&
-          !isCjkCodepoint(codepoint)) {
-        return _cursorTextEntry(cell, codepoint, span: span);
-      }
-
-      return _atlasHandle.atlas.addCodepoint(
-        codepoint,
-        bold: style.bold,
-        italic: style.italic,
-        span: span,
-      );
-    }
-
-    return _cursorTextEntry(cell, codepoint, span: span);
-  }
-
-  AtlasEntry _cursorTextEntry(
-    CursorCell cell,
-    int codepoint, {
-    required int span,
-  }) {
-    final style = cell.style;
-    final emoji =
-        cell.content.contains('\uFE0F') ||
-        (cell.wide && !isCjkCodepoint(codepoint));
-    return _atlasHandle.atlas.add(
-      (text: cell.content, bold: style.bold, italic: style.italic),
-      span: span,
-      emoji: emoji,
     );
   }
 
