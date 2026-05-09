@@ -3,9 +3,12 @@ import 'dart:ui';
 
 import 'package:libghostty/libghostty.dart' show UnderlineStyle;
 
-import '../../foundation.dart';
 import '../sprite/sprite_face.dart';
+import 'glyph_atlas_config.dart';
+import 'glyph_atlas_texture.dart';
 import 'glyph_entry.dart';
+
+export 'glyph_atlas_texture.dart' show GlyphAtlasFullException;
 
 /// Rasterizes glyphs into a packed atlas texture.
 ///
@@ -18,26 +21,11 @@ import 'glyph_entry.dart';
 /// color tinting via [BlendMode.modulate]. Emoji are rasterized in full
 /// color and composited with scaling to fit within the cell bounds.
 class GlyphRasterizer {
-  static const _defaultInitialSize = 1024;
-  static const _defaultMaxSize = 4096;
-
-  // Gap between atlas cells prevents sub-pixel bleed between sprites.
-  static const _padding = 1.0;
-
   final List<(Paragraph, GlyphEntry)> _pending = [];
   final List<(SpriteGlyph, GlyphEntry)> _pendingSprites = [];
   final List<(UnderlineStyle, GlyphEntry)> _pendingDecorations = [];
-  final _compositePaint = Paint();
   final _spriteContext = SpriteContext();
-
-  final int _initialSize;
-  final int _maxSize;
-
-  late int _width;
-  late int _height;
-  var _packX = 0.0;
-  var _packY = 0.0;
-  var _rowHeight = 0.0;
+  final GlyphAtlasTexture _texture;
   var _dirty = false;
 
   var _fontFamily = '';
@@ -61,52 +49,35 @@ class GlyphRasterizer {
   // in the atlas source rect and not clipped by drawRawAtlas.
   var _pxItalicOverhang = 0.0;
 
-  Image? image;
+  Image? get image => _texture.image;
 
   GlyphRasterizer({
-    int initialSize = _defaultInitialSize,
-    int maxSize = _defaultMaxSize,
-  }) : assert(initialSize > 0, 'initialSize must be positive'),
-       assert(maxSize >= initialSize, 'maxSize must be >= initialSize'),
-       _initialSize = initialSize,
-       _maxSize = maxSize {
-    _width = initialSize;
-    _height = initialSize;
-  }
+    int initialSize = GlyphAtlasTexture.defaultInitialSize,
+    int maxSize = GlyphAtlasTexture.defaultMaxSize,
+  }) : _texture = GlyphAtlasTexture(initialSize: initialSize, maxSize: maxSize);
 
   void clear() {
     _disposePending();
     _pendingSprites.clear();
     _pendingDecorations.clear();
-    image?.dispose();
-    image = null;
+    _texture.clear();
     _dirty = false;
-    _packX = 0;
-    _packY = 0;
-    _rowHeight = 0;
-    _width = _initialSize;
-    _height = _initialSize;
   }
 
-  void configure({
-    required double fontSize,
-    required String fontFamily,
-    required FontWeight fontWeight,
-    required List<String> fontFamilyFallback,
-    required CellMetrics metrics,
-    required double dpr,
-  }) {
-    _fontFamily = fontFamily;
-    _fontWeight = fontWeight;
-    _fontFamilyFallback = fontFamilyFallback;
-    _pxCellWidth = metrics.cellWidth * dpr;
-    _pxCellHeight = metrics.cellHeight * dpr;
-    _pxBaseline = metrics.baseline * dpr;
-    _pxFontSize = fontSize * dpr;
-    _pxUnderlinePosition = metrics.underlinePosition * dpr;
+  void configure(GlyphAtlasConfig config) {
+    _fontFamily = config.fontFamily;
+    _fontWeight = config.fontWeight;
+    _fontFamilyFallback = config.fontFamilyFallback;
+    _pxCellWidth = config.metrics.cellWidth * config.devicePixelRatio;
+    _pxCellHeight = config.metrics.cellHeight * config.devicePixelRatio;
+    _pxBaseline = config.metrics.baseline * config.devicePixelRatio;
+    _pxFontSize = config.fontSize * config.devicePixelRatio;
+    _pxUnderlinePosition =
+        config.metrics.underlinePosition * config.devicePixelRatio;
     _pxUnderlineThickness = max(
       1.0,
-      (metrics.underlineThickness * dpr).ceilToDouble(),
+      (config.metrics.underlineThickness * config.devicePixelRatio)
+          .ceilToDouble(),
     );
     _pxDecorationPadding = (_pxCellHeight / 4).ceilToDouble();
     _pxItalicOverhang = max(1.0, (_pxFontSize * 0.15).ceilToDouble());
@@ -116,8 +87,7 @@ class GlyphRasterizer {
     _disposePending();
     _pendingSprites.clear();
     _pendingDecorations.clear();
-    image?.dispose();
-    image = null;
+    _texture.dispose();
   }
 
   /// Composites pending glyphs and decorations into the atlas image.
@@ -130,67 +100,63 @@ class GlyphRasterizer {
     }
     _dirty = false;
 
-    final recorder = PictureRecorder();
-    final canvas = Canvas(recorder);
-    if (image != null) canvas.drawImage(image!, Offset.zero, _compositePaint);
-
-    for (final (paragraph, entry) in _pending) {
-      canvas.save();
-      canvas.clipRect(
-        Rect.fromLTRB(
-          entry.srcLeft,
-          entry.srcTop,
-          entry.srcRight,
-          entry.srcBottom,
-        ),
-      );
-      if (entry.isEmoji) {
-        _compositeEmoji(canvas, paragraph, entry);
-      } else {
-        canvas.drawParagraph(
-          paragraph,
-          Offset(entry.srcLeft + entry.bearingX, entry.srcTop + entry.bearingY),
+    _texture.replaceImage((canvas) {
+      for (final (paragraph, entry) in _pending) {
+        canvas.save();
+        canvas.clipRect(
+          Rect.fromLTRB(
+            entry.srcLeft,
+            entry.srcTop,
+            entry.srcRight,
+            entry.srcBottom,
+          ),
         );
+        if (entry.isEmoji) {
+          _compositeEmoji(canvas, paragraph, entry);
+        } else {
+          canvas.drawParagraph(
+            paragraph,
+            Offset(
+              entry.srcLeft + entry.bearingX,
+              entry.srcTop + entry.bearingY,
+            ),
+          );
+        }
+        canvas.restore();
+        paragraph.dispose();
       }
-      canvas.restore();
-      paragraph.dispose();
-    }
-    _pending.clear();
 
-    for (final (glyph, entry) in _pendingSprites) {
-      final rect = Rect.fromLTRB(
-        entry.srcLeft,
-        entry.srcTop,
-        entry.srcRight,
-        entry.srcBottom,
-      );
-      canvas.save();
-      canvas.clipRect(rect);
-      _spriteContext.reset();
-      glyph.paint(canvas, rect, _spriteContext);
-      canvas.restore();
-    }
-    _pendingSprites.clear();
-
-    for (final (style, entry) in _pendingDecorations) {
-      canvas.save();
-      canvas.clipRect(
-        Rect.fromLTRB(
+      for (final (glyph, entry) in _pendingSprites) {
+        final rect = Rect.fromLTRB(
           entry.srcLeft,
           entry.srcTop,
           entry.srcRight,
           entry.srcBottom,
-        ),
-      );
-      _compositeDecoration(canvas, style, entry);
-      canvas.restore();
-    }
-    _pendingDecorations.clear();
+        );
+        canvas.save();
+        canvas.clipRect(rect);
+        _spriteContext.reset();
+        glyph.paint(canvas, rect, _spriteContext);
+        canvas.restore();
+      }
 
-    final picture = recorder.endRecording();
-    image?.dispose();
-    image = picture.toImageSync(_width, _height);
-    picture.dispose();
+      for (final (style, entry) in _pendingDecorations) {
+        canvas.save();
+        canvas.clipRect(
+          Rect.fromLTRB(
+            entry.srcLeft,
+            entry.srcTop,
+            entry.srcRight,
+            entry.srcBottom,
+          ),
+        );
+        _compositeDecoration(canvas, style, entry);
+        canvas.restore();
+      }
+    });
+    _pending.clear();
+    _pendingSprites.clear();
+    _pendingDecorations.clear();
   }
 
   /// Builds a paragraph for [text], packs it into the atlas, and returns
@@ -236,19 +202,13 @@ class GlyphRasterizer {
   GlyphEntry rasterizeSprite(SpriteGlyph glyph, {int span = 1}) {
     final pxWidth = (_pxCellWidth * span).ceil().toDouble();
     final pxHeight = _pxCellHeight.ceil().toDouble();
-    _pack(pxWidth, pxHeight);
-
-    final entry = GlyphEntry(
-      srcLeft: _packX,
-      srcTop: _packY,
-      srcRight: _packX + pxWidth,
-      srcBottom: _packY + pxHeight,
+    final entry = _texture.allocate(
+      width: pxWidth,
+      height: pxHeight,
       bearingY: 0,
     );
 
     _pendingSprites.add((glyph, entry));
-    _packX += pxWidth + _padding;
-    _rowHeight = max(_rowHeight, pxHeight);
     _dirty = true;
     return entry;
   }
@@ -267,8 +227,6 @@ class GlyphRasterizer {
     // overlaps into the adjacent cell's space without shifting the glyph.
     final overhang = (italic && !emoji) ? _pxItalicOverhang : 0.0;
     final pxWidth = pxCellWidth + overhang;
-
-    _pack(pxWidth, pxHeight);
 
     // Emoji: fit within the smaller of cell height and cell width, then
     // shrink 5% to prevent clipping at cell edges. Text: use font size.
@@ -331,19 +289,21 @@ class GlyphRasterizer {
         ? max(0.0, (pxCellWidth - paragraph.maxIntrinsicWidth) / 2)
         : 0.0;
 
-    final entry = GlyphEntry(
-      srcLeft: _packX,
-      srcTop: _packY,
-      srcRight: _packX + pxWidth,
-      srcBottom: _packY + pxHeight,
-      bearingY: bearingY,
-      bearingX: bearingX,
-      isEmoji: emoji,
-    );
+    late final GlyphEntry entry;
+    try {
+      entry = _texture.allocate(
+        width: pxWidth,
+        height: pxHeight,
+        bearingY: bearingY,
+        bearingX: bearingX,
+        isEmoji: emoji,
+      );
+    } catch (_) {
+      paragraph.dispose();
+      rethrow;
+    }
 
     _pending.add((paragraph, entry));
-    _packX += pxWidth + _padding;
-    _rowHeight = max(_rowHeight, pxHeight);
     _dirty = true;
     return entry;
   }
@@ -359,19 +319,13 @@ class GlyphRasterizer {
     final pxWidth = _pxCellWidth.ceil().toDouble();
     // Sprite is taller than cell to accommodate decorations extending below.
     final pxHeight = (_pxCellHeight + _pxDecorationPadding).ceil().toDouble();
-    _pack(pxWidth, pxHeight);
-
-    final entry = GlyphEntry(
-      srcLeft: _packX,
-      srcTop: _packY,
-      srcRight: _packX + pxWidth,
-      srcBottom: _packY + pxHeight,
+    final entry = _texture.allocate(
+      width: pxWidth,
+      height: pxHeight,
       bearingY: 0,
     );
 
     _pendingDecorations.add((style, entry));
-    _packX += pxWidth + _padding;
-    _rowHeight = max(_rowHeight, pxHeight);
     _dirty = true;
     return entry;
   }
@@ -565,87 +519,4 @@ class GlyphRasterizer {
     }
     _pending.clear();
   }
-
-  /// Doubles one atlas dimension so the texture stays roughly square as it
-  /// grows toward [_maxSize]. Returns false when both dimensions are maxed.
-  bool _grow() {
-    if ((_width <= _height && _width < _maxSize) ||
-        (_height >= _maxSize && _width < _maxSize)) {
-      _width = min(_width * 2, _maxSize);
-      return true;
-    } else if (_height < _maxSize) {
-      _height = min(_height * 2, _maxSize);
-      return true;
-    }
-    return false;
-  }
-
-  /// Row-based bin packing: fills left-to-right within the current row,
-  /// wraps to the next row when the glyph won't fit, and grows the
-  /// atlas if vertical space is exhausted.
-  void _pack(double width, double height) {
-    if (width + _padding > _maxSize || height + _padding > _maxSize) {
-      throw GlyphAtlasFullException(
-        requestedWidth: width,
-        requestedHeight: height,
-        atlasWidth: _width,
-        atlasHeight: _height,
-        maxSize: _maxSize,
-      );
-    }
-
-    while (width + _padding > _width || height + _padding > _height) {
-      if (!_grow()) {
-        throw GlyphAtlasFullException(
-          requestedWidth: width,
-          requestedHeight: height,
-          atlasWidth: _width,
-          atlasHeight: _height,
-          maxSize: _maxSize,
-        );
-      }
-    }
-
-    if (_packX + width + _padding > _width) {
-      _packX = 0;
-      _packY += _rowHeight + _padding;
-      _rowHeight = 0;
-    }
-
-    while (_packY + height + _padding > _height) {
-      if (!_grow()) {
-        throw GlyphAtlasFullException(
-          requestedWidth: width,
-          requestedHeight: height,
-          atlasWidth: _width,
-          atlasHeight: _height,
-          maxSize: _maxSize,
-        );
-      }
-    }
-  }
-}
-
-/// Thrown when a glyph or sprite cannot fit inside the configured atlas limit.
-class GlyphAtlasFullException implements Exception {
-  final double requestedWidth;
-  final double requestedHeight;
-  final int atlasWidth;
-  final int atlasHeight;
-  final int maxSize;
-
-  const GlyphAtlasFullException({
-    required this.requestedWidth,
-    required this.requestedHeight,
-    required this.atlasWidth,
-    required this.atlasHeight,
-    required this.maxSize,
-  });
-
-  @override
-  String toString() =>
-      'GlyphAtlasFullException: requested '
-      '${requestedWidth.toStringAsFixed(1)}x'
-      '${requestedHeight.toStringAsFixed(1)} in ${atlasWidth}x$atlasHeight '
-      'atlas with max size $maxSize';
 }
