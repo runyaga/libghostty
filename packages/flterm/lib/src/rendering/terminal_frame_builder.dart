@@ -6,6 +6,7 @@ import 'package:libghostty/libghostty.dart';
 
 import '../foundation/dynamic_color.dart';
 import '../foundation/terminal_selection.dart';
+import '../foundation/terminal_theme.dart';
 import 'atlas/atlas.dart';
 import 'atlas/sprite_buffer.dart';
 import 'cell_content_resolver.dart';
@@ -18,6 +19,12 @@ bool _isOperator(int cp) {
       (cp > 0x5A && cp < 0x61) ||
       cp > 0x7A;
 }
+
+// Above common wide terminal columns; caps pathological operator animations.
+const _operatorRunChunkCells = 256;
+
+// Conservative context lets boundary-crossing ligatures shape correctly.
+const _operatorLigatureContextCells = 16;
 
 /// Tracks per-row dirtiness from sources outside libghostty's own row-dirty
 /// flag, such as selection, blink, layout, or atlas changes.
@@ -196,6 +203,8 @@ final class _AsciiOperatorRun {
 
   String get text => String.fromCharCodes(_codepoints);
 
+  List<int> get codepoints => _codepoints;
+
   void add(int codepoint, double cellX) {
     if (_codepoints.isEmpty) x = cellX;
     _codepoints.add(codepoint);
@@ -354,6 +363,11 @@ final class _ForegroundEmitter {
   final TerminalPaintState _state;
   final CellContentResolver _content;
   final _AsciiOperatorRun _operators;
+  TerminalTheme? _lastTextStyleTheme;
+  TextStyle? _lastTextStyle;
+  var _lastTextStyleForeground = 0;
+  var _lastTextStyleBold = false;
+  var _lastTextStyleItalic = false;
 
   _ForegroundEmitter(this._sprites, this._content, this._frame, this._state)
     : _operators = _AsciiOperatorRun();
@@ -391,68 +405,116 @@ final class _ForegroundEmitter {
     if (_operators.length == 1) {
       _emitCodepoint(_operators.first, row, style: style, x: _operators.x);
     } else {
-      _emitShapedRun(
-        _operators.text,
-        row,
-        style: style,
-        span: _operators.length,
-      );
+      _emitShapedRun(_operators, row, style: style);
     }
     _operators.clear();
   }
 
   void _emitShapedRun(
+    _AsciiOperatorRun run,
+    _RowBuildState row, {
+    required Style style,
+  }) {
+    final length = run.length;
+    if (length <= _operatorRunChunkCells) {
+      _emitShapedChunk(
+        run.text,
+        row,
+        style: style,
+        runX: run.x,
+        textStart: 0,
+        coreStart: 0,
+        coreEnd: length,
+      );
+      return;
+    }
+
+    final codepoints = run.codepoints;
+    var coreStart = 0;
+    while (coreStart < length) {
+      final coreEnd = math.min(coreStart + _operatorRunChunkCells, length);
+      final textStart = math.max(0, coreStart - _operatorLigatureContextCells);
+      final textEnd = math.min(length, coreEnd + _operatorLigatureContextCells);
+      _emitShapedChunk(
+        String.fromCharCodes(codepoints, textStart, textEnd),
+        row,
+        style: style,
+        runX: run.x,
+        textStart: textStart,
+        coreStart: coreStart,
+        coreEnd: coreEnd,
+      );
+      coreStart = coreEnd;
+    }
+  }
+
+  void _emitShapedChunk(
     String text,
     _RowBuildState row, {
     required Style style,
-    required int span,
+    required double runX,
+    required int textStart,
+    required int coreStart,
+    required int coreEnd,
   }) {
     final theme = _state.theme;
-    final width = _frame.cellWidth * span;
+    final textX = runX + _frame.cellWidth * textStart;
+    final coreX = runX + _frame.cellWidth * coreStart;
+    final coreWidth = _frame.cellWidth * (coreEnd - coreStart);
     final overhang = style.italic
         ? math.max(1.0, (theme.fontSize * 0.15).ceilToDouble())
         : 0.0;
     final paragraph =
-        (ParagraphBuilder(
-                ParagraphStyle(
-                  fontSize: theme.fontSize,
-                  fontFamily: theme.fontFamily,
-                  textAlign: .start,
-                ),
-              )
-              ..pushStyle(
-                TextStyle(
-                  color: Color(row.foreground),
-                  fontSize: theme.fontSize,
-                  fontFamily: theme.fontFamily,
-                  decoration: TextDecoration.none,
-                  fontWeight: style.bold ? .bold : theme.fontWeight,
-                  fontStyle: style.italic ? .italic : .normal,
-                  fontFamilyFallback: theme.fontFamilyFallback,
-                ),
-              )
+        (ParagraphBuilder(_frame.paragraphStyle)
+              ..pushStyle(_textStyle(row.foreground, style))
               ..addText(text)
               ..pop())
             .build()
           ..layout(const ParagraphConstraints(width: .infinity));
-    final bearingX = span > 1
-        ? math.max(0.0, (width - paragraph.maxIntrinsicWidth) / 2)
-        : 0.0;
     _sprites.shaped.add(
       ShapedRun(
         paragraph: paragraph,
         offset: Offset(
-          _operators.x + bearingX,
+          textX,
           row.rowY + _state.metrics.baseline - paragraph.alphabeticBaseline,
         ),
         clip: Rect.fromLTWH(
-          _operators.x,
+          coreX,
           row.rowY,
-          width + overhang,
+          coreWidth + overhang,
           _frame.cellHeight,
         ),
       ),
     );
+  }
+
+  TextStyle _textStyle(int foreground, Style style) {
+    final theme = _state.theme;
+    final bold = style.bold;
+    final italic = style.italic;
+    final cached = _lastTextStyle;
+    if (cached != null &&
+        identical(theme, _lastTextStyleTheme) &&
+        foreground == _lastTextStyleForeground &&
+        bold == _lastTextStyleBold &&
+        italic == _lastTextStyleItalic) {
+      return cached;
+    }
+
+    final textStyle = TextStyle(
+      color: Color(foreground),
+      fontSize: theme.fontSize,
+      fontFamily: theme.fontFamily,
+      decoration: TextDecoration.none,
+      fontWeight: bold ? .bold : theme.fontWeight,
+      fontStyle: italic ? .italic : .normal,
+      fontFamilyFallback: theme.fontFamilyFallback,
+    );
+    _lastTextStyleTheme = theme;
+    _lastTextStyleForeground = foreground;
+    _lastTextStyleBold = bold;
+    _lastTextStyleItalic = italic;
+    return _lastTextStyle = textStyle;
   }
 
   void _emitCodepoint(
@@ -493,6 +555,7 @@ final class _ForegroundEmitter {
 
 /// Frame-scoped metrics and theme values read by row emitters.
 final class _FrameSnapshot {
+  late ParagraphStyle paragraphStyle;
   var cellWidth = 0.0;
   var cellHeight = 0.0;
   var underlineThickness = 0.0;
@@ -533,6 +596,11 @@ final class _FrameSnapshot {
     cols = state.cols;
 
     final theme = state.theme;
+    paragraphStyle = ParagraphStyle(
+      fontSize: theme.fontSize,
+      fontFamily: theme.fontFamily,
+      textAlign: .start,
+    );
     applyCellOpacity =
         theme.backgroundOpacityCells && theme.backgroundOpacity < 1.0;
     cellOpacityAlpha = theme.backgroundOpacityAlpha;
@@ -600,7 +668,8 @@ final class _RowBuildState {
 
 /// Resolves and caches style-derived colors for the current frame.
 final class _StyleResolver {
-  static const _maxEntries = 256;
+  // Covers common 256-color fg/bg animation palettes within one frame.
+  static const _maxEntries = 1024;
 
   final TerminalPaintState _state;
   final Int32List _gen;

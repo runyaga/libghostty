@@ -62,6 +62,33 @@ void main() {
       expect(atlas.cacheSize, initialCacheSize);
     });
 
+    test('sync chunks long operator runs without adding atlas entries', () {
+      final localTerminal = Terminal(cols: 260, rows: 1);
+      final localAtlas = Atlas(_config());
+      final localSprites = SpriteBuffer();
+      final localState = TerminalPaintState(TerminalTheme.dark(), _metrics)
+        ..cols = 260
+        ..rows = 1;
+      final localBuilder = TerminalFrameBuilder(
+        localAtlas,
+        localSprites,
+        localState,
+      )..configure(1, 260);
+      addTearDown(() {
+        localBuilder.dispose();
+        localSprites.dispose();
+        localAtlas.dispose();
+        localTerminal.dispose();
+      });
+      final initialCacheSize = localAtlas.cacheSize;
+      localTerminal.writeUtf8(List.filled(260, r'$').join());
+
+      localBuilder.sync(localTerminal, terminalDirty: true);
+
+      expect(localSprites.shaped.count, 2);
+      expect(localAtlas.cacheSize, initialCacheSize);
+    });
+
     test('sync resolves palette colors from render state colors', () {
       terminal.palette = [
         for (var i = 0; i < 256; i++)
