@@ -13,6 +13,7 @@ jobs:
     outputs:
       libghostty: ${{ steps.filter.outputs.libghostty }}
       flterm: ${{ steps.filter.outputs.flterm }}
+      ptyx: ${{ steps.filter.outputs.ptyx }}
     steps:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
       - uses: dorny/paths-filter@de90cc6fb38fc0963ad72b210f1f284cd68cea36 # v3.0.2
@@ -30,6 +31,12 @@ jobs:
               - '!packages/flterm/**/*.md'
               - 'pubspec.yaml'
               - '.github/workflows/checks.yml'
+            ptyx:
+              - 'packages/ptyx/**'
+              - '!packages/ptyx/**/*.md'
+              - 'pubspec.yaml'
+              - '.github/workflows/checks.yml'
+              - '.github/workflows/build.yml'
 
   analyze:
     name: analyze
@@ -57,6 +64,9 @@ jobs:
         run: dart pub publish --dry-run
       - name: publish dry run flterm
         working-directory: packages/flterm
+        run: dart pub publish --dry-run
+      - name: publish dry run ptyx
+        working-directory: packages/ptyx
         run: dart pub publish --dry-run
 
   test-libghostty-native:
@@ -217,6 +227,116 @@ jobs:
         working-directory: packages/flterm
         run: very_good test
 
+  test-ptyx-dart:
+    name: test-ptyx-dart-${{ matrix.os }}
+    needs: [analyze, changes]
+    if: needs.changes.outputs.ptyx == 'true'
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-arm64
+            runner: macos-latest
+          - os: linux-x64
+            runner: ubuntu-latest
+          - os: windows-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-tags: false
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: ~/.pub-cache
+          key: pub-${{ runner.os }}-${{ hashFiles('**/pubspec.lock') }}
+          restore-keys: pub-${{ runner.os }}-
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            packages/ptyx/native/target
+          key: cargo-ptyx-dart-${{ runner.os }}-${{ hashFiles('packages/ptyx/native/Cargo.lock') }}
+          restore-keys: cargo-ptyx-dart-${{ runner.os }}-
+      - name: install rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+      - name: configure dart sdk
+        run: |
+          SDK="$(dirname "$(dirname "$(command -v dart)")")"
+          if command -v cygpath >/dev/null 2>&1; then
+            SDK="$(cygpath -w "$SDK")"
+          fi
+          printf 'DART_SDK=%s\n' "$SDK" >> "$GITHUB_ENV"
+          printf 'PTYX_DART_SDK=%s\n' "$SDK" >> "$GITHUB_ENV"
+      - run: flutter pub get
+      - name: run tests
+        working-directory: packages/ptyx
+        run: dart test
+
+  test-ptyx-rust:
+    name: test-ptyx-rust-${{ matrix.os }}
+    needs: [analyze, changes]
+    if: needs.changes.outputs.ptyx == 'true'
+    runs-on: ${{ matrix.runner }}
+    defaults:
+      run:
+        shell: bash
+    strategy:
+      fail-fast: true
+      matrix:
+        include:
+          - os: macos-arm64
+            runner: macos-latest
+          - os: linux-x64
+            runner: ubuntu-latest
+          - os: windows-x64
+            runner: windows-latest
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          fetch-tags: false
+      - uses: subosito/flutter-action@fd55f4c5af5b953cc57a2be44cb082c8f6635e8e # v2.21.0
+        with:
+          channel: stable
+          cache: true
+      - uses: actions/cache@cdf6c1fa76f9f475f3d7449005a359c84ca0f306 # v5.0.3
+        with:
+          path: |
+            ~/.cargo/git
+            ~/.cargo/registry
+            packages/ptyx/native/target
+          key: cargo-ptyx-rust-${{ runner.os }}-${{ hashFiles('packages/ptyx/native/Cargo.lock') }}
+          restore-keys: cargo-ptyx-rust-${{ runner.os }}-
+      - name: install rust
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+          rustup component add rustfmt
+      - name: configure dart sdk
+        run: |
+          SDK="$(dirname "$(dirname "$(command -v dart)")")"
+          if command -v cygpath >/dev/null 2>&1; then
+            SDK="$(cygpath -w "$SDK")"
+          fi
+          printf 'DART_SDK=%s\n' "$SDK" >> "$GITHUB_ENV"
+          printf 'PTYX_DART_SDK=%s\n' "$SDK" >> "$GITHUB_ENV"
+      - name: check rust formatting
+        run: cargo fmt --manifest-path packages/ptyx/native/Cargo.toml -- --check
+      - name: run rust tests
+        run: cargo test --manifest-path packages/ptyx/native/Cargo.toml
+      - name: build rust docs
+        run: cargo doc --manifest-path packages/ptyx/native/Cargo.toml --no-deps
+
   # Single required status that aggregates every conditional job above.
   # Branch protection requires only this context, which lets the matrix
   # and path-filtered jobs skip without blocking merges. Fails if any
@@ -230,6 +350,8 @@ jobs:
       - test-libghostty-native
       - test-libghostty-wasm
       - test-flterm
+      - test-ptyx-dart
+      - test-ptyx-rust
     runs-on: ubuntu-latest
     steps:
       - name: verify required checks
