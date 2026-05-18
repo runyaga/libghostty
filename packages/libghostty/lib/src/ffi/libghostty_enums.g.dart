@@ -736,7 +736,13 @@ enum KeyEncoderOption {
   kittyFlags(5),
 
   /// macOS option-as-alt setting (value: OptionAsAlt)
-  macosOptionAsAlt(6);
+  macosOptionAsAlt(6),
+
+  /// Backarrow key mode (value: bool)
+  /// See https://vt100.net/dec/ek-vt3xx-tp-002.pdf page 170
+  /// If `false` (the default), `backspace` emits 0x7f
+  /// If `true`, `backspace` emits 0x08
+  backarrowKeyMode(7);
 
   final int value;
   const KeyEncoderOption(this.value);
@@ -749,6 +755,7 @@ enum KeyEncoderOption {
     4 => modifyOtherKeysState2,
     5 => kittyFlags,
     6 => macosOptionAsAlt,
+    7 => backarrowKeyMode,
     _ => throw ArgumentError('Unknown value for KeyEncoderOption: $value'),
   };
 }
@@ -2376,7 +2383,22 @@ enum TerminalOption {
   /// are disabled at build time.
   ///
   /// Input type: bool*
-  kittyImageMediumSharedMem(18);
+  kittyImageMediumSharedMem(18),
+
+  /// Set the maximum bytes the APC handler will buffer for all protocols.
+  /// This prevents malicious input from causing unbounded memory allocation.
+  /// A NULL value pointer removes all overrides, reverting to the built-in
+  /// defaults.
+  ///
+  /// Input type: size_t*
+  apcMaxBytes(19),
+
+  /// Set the maximum bytes the APC handler will buffer for Kitty graphics
+  /// protocol data. A NULL value pointer removes the override, reverting
+  /// to the built-in default.
+  ///
+  /// Input type: size_t*
+  apcMaxBytesKitty(20);
 
   final int value;
   const TerminalOption(this.value);
@@ -2401,6 +2423,8 @@ enum TerminalOption {
     16 => kittyImageMediumFile,
     17 => kittyImageMediumTempFile,
     18 => kittyImageMediumSharedMem,
+    19 => apcMaxBytes,
+    20 => apcMaxBytesKitty,
     _ => throw ArgumentError('Unknown value for TerminalOption: $value'),
   };
 }
