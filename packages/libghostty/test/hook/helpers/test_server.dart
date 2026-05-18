@@ -6,10 +6,11 @@ import 'package:shelf_static/shelf_static.dart';
 class TestServer {
   final Uri baseUrl;
   final HttpServer _server;
+  Future<void>? _closeFuture;
 
   TestServer._(this._server, this.baseUrl);
 
-  Future<void> close() => _server.close();
+  Future<void> close() => _closeFuture ??= _server.close();
 
   static Future<TestServer> start(Directory directory) async {
     final handler = createStaticHandler(directory.path);

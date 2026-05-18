@@ -12,34 +12,6 @@ import 'package:test/test.dart';
 
 import 'helpers/test_server.dart';
 
-BuildInput createTestBuildInput({
-  OS os = OS.macOS,
-  Architecture arch = Architecture.arm64,
-  required Uri outputDirectoryShared,
-}) {
-  final tmp = Directory.systemTemp.createTempSync('build_input_test_');
-  addTearDown(() => tmp.deleteSync(recursive: true));
-
-  return BuildInput(<String, dynamic>{
-    'package_name': 'test_package',
-    'package_root': tmp.path,
-    'out_dir': '${tmp.path}/out',
-    'out_dir_shared': outputDirectoryShared.toFilePath(),
-    'user_defines': <String, String>{},
-    'config': <String, dynamic>{
-      'build_code_assets': true,
-      'build_asset_types': <String>[],
-      'extensions': <String, dynamic>{
-        'code_assets': <String, dynamic>{
-          'target_os': os.name,
-          'target_architecture': arch.name,
-          'ios': <String, dynamic>{'target_sdk': 'iphoneos'},
-        },
-      },
-    },
-  });
-}
-
 void main() {
   group('DownloadPrebuilt', () {
     late Directory tmpDir;
@@ -83,148 +55,182 @@ void main() {
       return {binaryName: sha256.convert(content).toString()};
     }
 
-    test('downloads binary from server to target', () async {
-      final content = [0xCA, 0xFE, 0xBA, 0xBE];
-      seedBinary(content);
-      final server = await TestServer.start(serverDir);
-      addTearDown(server.close);
+    group('provide', () {
+      test('downloads binary from server to target', () async {
+        final content = [0xCA, 0xFE, 0xBA, 0xBE];
+        seedBinary(content);
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
 
-      final target = File('${tmpDir.path}/output/lib/target.dylib');
-      await createProvider(
-        hashes: hashFor(content),
-        server: server,
-      ).provide(target);
-
-      expect(target.existsSync(), isTrue);
-      expect(target.readAsBytesSync(), equals(content));
-    });
-
-    test('caches downloaded binary', () async {
-      final content = [1, 2, 3, 4, 5];
-      seedBinary(content);
-      final server = await TestServer.start(serverDir);
-
-      final provider = createProvider(hashes: hashFor(content), server: server);
-      final target1 = File('${tmpDir.path}/output1/lib/t.dylib');
-      final target2 = File('${tmpDir.path}/output2/lib/t.dylib');
-
-      await provider.provide(target1);
-      await server.close();
-      await provider.provide(target2);
-
-      expect(target2.readAsBytesSync(), equals(content));
-    });
-
-    test('throws when no hash registered for target', () async {
-      final content = [10, 20, 30];
-      seedBinary(content);
-      final server = await TestServer.start(serverDir);
-      addTearDown(server.close);
-
-      final target = File('${tmpDir.path}/output/lib/t.dylib');
-
-      expect(
-        () => createProvider(hashes: {}, server: server).provide(target),
-        throwsA(
-          isA<Exception>().having(
-            (e) => e.toString(),
-            'message',
-            contains('No known hash for'),
-          ),
-        ),
-      );
-    });
-
-    test('passes with correct hash', () async {
-      final content = [0xDE, 0xAD];
-      seedBinary(content);
-      final server = await TestServer.start(serverDir);
-      addTearDown(server.close);
-
-      final expectedHash = sha256.convert(content).toString();
-
-      final target = File('${tmpDir.path}/output/lib/t.dylib');
-      await createProvider(
-        hashes: {'libghostty-aarch64-macos.dylib': expectedHash},
-        server: server,
-      ).provide(target);
-
-      expect(target.existsSync(), isTrue);
-    });
-
-    test('throws on hash mismatch', () async {
-      final content = [0xDE, 0xAD];
-      seedBinary(content);
-      final server = await TestServer.start(serverDir);
-      addTearDown(server.close);
-
-      final target = File('${tmpDir.path}/output/lib/t.dylib');
-
-      expect(
-        () => createProvider(
-          hashes: {'libghostty-aarch64-macos.dylib': 'wrong-hash'},
+        final target = File('${tmpDir.path}/output/lib/target.dylib');
+        await createProvider(
+          hashes: hashFor(content),
           server: server,
-        ).provide(target),
-        throwsA(
-          isA<Exception>().having(
-            (e) => e.toString(),
-            'message',
-            contains('SHA256 hash mismatch'),
+        ).provide(target);
+
+        expect(target.existsSync(), isTrue);
+        expect(target.readAsBytesSync(), equals(content));
+      });
+
+      test('caches downloaded binary', () async {
+        final content = [1, 2, 3, 4, 5];
+        seedBinary(content);
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
+
+        final provider = createProvider(
+          hashes: hashFor(content),
+          server: server,
+        );
+        final target1 = File('${tmpDir.path}/output1/lib/t.dylib');
+        final target2 = File('${tmpDir.path}/output2/lib/t.dylib');
+
+        await provider.provide(target1);
+        await server.close();
+        await provider.provide(target2);
+
+        expect(target2.readAsBytesSync(), equals(content));
+      });
+
+      test('throws when target has no registered hash', () async {
+        final content = [10, 20, 30];
+        seedBinary(content);
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
+
+        final target = File('${tmpDir.path}/output/lib/t.dylib');
+
+        expect(
+          () => createProvider(hashes: {}, server: server).provide(target),
+          throwsA(
+            isA<Exception>().having(
+              (e) => e.toString(),
+              'message',
+              contains('No known hash for'),
+            ),
           ),
-        ),
-      );
-    });
+        );
+      });
 
-    test('uses cached file when available', () async {
-      final cacheDir = Directory('${tmpDir.path}/cache/prebuilt-$releaseTag')
-        ..createSync(recursive: true);
-      final cachedContent = [0xFF, 0xFF];
-      File('${cacheDir.path}/$binaryName').writeAsBytesSync(cachedContent);
+      test('accepts matching hash', () async {
+        final content = [0xDE, 0xAD];
+        seedBinary(content);
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
 
-      final server = await TestServer.start(serverDir);
-      addTearDown(server.close);
+        final expectedHash = sha256.convert(content).toString();
 
-      final target = File('${tmpDir.path}/output/lib/t.dylib');
+        final target = File('${tmpDir.path}/output/lib/t.dylib');
+        await createProvider(
+          hashes: {'libghostty-aarch64-macos.dylib': expectedHash},
+          server: server,
+        ).provide(target);
 
-      await createProvider(
-        hashes: hashFor(cachedContent),
-        server: server,
-      ).provide(target);
+        expect(target.existsSync(), isTrue);
+      });
 
-      expect(target.readAsBytesSync(), equals(cachedContent));
-    });
+      test('throws on hash mismatch', () async {
+        final content = [0xDE, 0xAD];
+        seedBinary(content);
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
 
-    test('creates parent directories for target', () async {
-      final content = [1];
-      seedBinary(content);
-      final server = await TestServer.start(serverDir);
-      addTearDown(server.close);
+        final target = File('${tmpDir.path}/output/lib/t.dylib');
 
-      final target = File('${tmpDir.path}/a/b/c/d/target.dylib');
-      await createProvider(
-        hashes: hashFor(content),
-        server: server,
-      ).provide(target);
-
-      expect(target.existsSync(), isTrue);
-    });
-
-    test('throws with actionable message on HTTP 404', () async {
-      final server = await TestServer.start(serverDir);
-      addTearDown(server.close);
-
-      final target = File('${tmpDir.path}/output/lib/t.dylib');
-
-      expect(
-        () => createProvider(hashes: {}, server: server).provide(target),
-        throwsA(
-          isA<Exception>().having(
-            (e) => e.toString(),
-            'message',
-            allOf(contains('Failed to download'), contains('HTTP 404')),
+        expect(
+          () => createProvider(
+            hashes: {'libghostty-aarch64-macos.dylib': 'wrong-hash'},
+            server: server,
+          ).provide(target),
+          throwsA(
+            isA<Exception>().having(
+              (e) => e.toString(),
+              'message',
+              contains('SHA256 hash mismatch'),
+            ),
           ),
-        ),
-      );
+        );
+      });
+
+      test('uses cached file when available', () async {
+        final cacheDir = Directory('${tmpDir.path}/cache/prebuilt-$releaseTag')
+          ..createSync(recursive: true);
+        final cachedContent = [0xFF, 0xFF];
+        File('${cacheDir.path}/$binaryName').writeAsBytesSync(cachedContent);
+
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
+
+        final target = File('${tmpDir.path}/output/lib/t.dylib');
+
+        await createProvider(
+          hashes: hashFor(cachedContent),
+          server: server,
+        ).provide(target);
+
+        expect(target.readAsBytesSync(), equals(cachedContent));
+      });
+
+      test('creates parent directories for target', () async {
+        final content = [1];
+        seedBinary(content);
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
+
+        final target = File('${tmpDir.path}/a/b/c/d/target.dylib');
+        await createProvider(
+          hashes: hashFor(content),
+          server: server,
+        ).provide(target);
+
+        expect(target.existsSync(), isTrue);
+      });
+
+      test('throws with HTTP status in message', () async {
+        final server = await TestServer.start(serverDir);
+        addTearDown(server.close);
+
+        final target = File('${tmpDir.path}/output/lib/t.dylib');
+
+        expect(
+          () => createProvider(hashes: {}, server: server).provide(target),
+          throwsA(
+            isA<Exception>().having(
+              (e) => e.toString(),
+              'message',
+              allOf(contains('Failed to download'), contains('HTTP 404')),
+            ),
+          ),
+        );
+      });
     });
+  });
+}
+
+BuildInput createTestBuildInput({
+  OS os = OS.macOS,
+  Architecture arch = Architecture.arm64,
+  required Uri outputDirectoryShared,
+}) {
+  final tmp = Directory.systemTemp.createTempSync('build_input_test_');
+  addTearDown(() => tmp.deleteSync(recursive: true));
+
+  return BuildInput(<String, dynamic>{
+    'package_name': 'test_package',
+    'package_root': tmp.path,
+    'out_dir': '${tmp.path}/out',
+    'out_dir_shared': outputDirectoryShared.toFilePath(),
+    'user_defines': <String, String>{},
+    'config': <String, dynamic>{
+      'build_code_assets': true,
+      'build_asset_types': <String>[],
+      'extensions': <String, dynamic>{
+        'code_assets': <String, dynamic>{
+          'target_os': os.name,
+          'target_architecture': arch.name,
+          'ios': <String, dynamic>{'target_sdk': 'iphoneos'},
+        },
+      },
+    },
   });
 }

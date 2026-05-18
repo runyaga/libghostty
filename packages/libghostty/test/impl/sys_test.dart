@@ -11,11 +11,14 @@ void main() {
     late Terminal terminal;
 
     setUp(() => terminal = Terminal(cols: 80, rows: 24));
-    tearDown(LibGhostty.clearLogger);
 
-    test(
-      'setLogger receives log emissions with decoded level/scope/message',
-      () {
+    tearDown(() {
+      terminal.dispose();
+      LibGhostty.clearLogger();
+    });
+
+    group('setLogger', () {
+      test('receives decoded log emissions', () {
         final captured = <_LogEntry>[];
         LibGhostty.setLogger((level, scope, message) {
           captured.add((level: level, scope: scope, message: message));
@@ -27,55 +30,56 @@ void main() {
         expect(captured.single.level, SysLogLevel.warning);
         expect(captured.single.scope, 'stream');
         expect(captured.single.message, contains('invalid C0 character'));
-      },
-    );
+      });
 
-    test('setLogger replaces a previously installed logger', () {
-      final first = <String>[];
-      final second = <String>[];
-      LibGhostty.setLogger((_, _, msg) => first.add(msg));
-      LibGhostty.setLogger((_, _, msg) => second.add(msg));
+      test('replaces previous logger', () {
+        final first = <String>[];
+        final second = <String>[];
+        LibGhostty.setLogger((_, _, msg) => first.add(msg));
+        LibGhostty.setLogger((_, _, msg) => second.add(msg));
 
-      terminal.write(_logTrigger);
+        terminal.write(_logTrigger);
 
-      expect(first, isEmpty);
-      expect(second, isNotEmpty);
+        expect(first, isEmpty);
+        expect(second, isNotEmpty);
+      });
     });
 
-    test('clearLogger stops delivering messages', () {
-      final captured = <String>[];
-      LibGhostty.setLogger((_, _, msg) => captured.add(msg));
-      LibGhostty.clearLogger();
+    group('clearLogger', () {
+      test('stops delivering messages', () {
+        final captured = <String>[];
+        LibGhostty.setLogger((_, _, msg) => captured.add(msg));
+        LibGhostty.clearLogger();
 
-      terminal.write(_logTrigger);
+        terminal.write(_logTrigger);
 
-      expect(captured, isEmpty);
+        expect(captured, isEmpty);
+      });
+
+      test('can be called without installed logger', () {
+        expect(LibGhostty.clearLogger, returnsNormally);
+      });
     });
 
-    test('clearLogger is safe without a prior setLogger', () {
-      LibGhostty.clearLogger();
-      LibGhostty.clearLogger();
-    });
+    group('useStderrLogger', () {
+      test('accepts emissions', () {
+        LibGhostty.useStderrLogger();
+        expect(() => terminal.write(_logTrigger), returnsNormally);
+      });
 
-    test('useStderrLogger accepts emissions without crashing', () {
-      LibGhostty.useStderrLogger();
-      expect(() => terminal.write(_logTrigger), returnsNormally);
-    });
+      test('replaces previous logger', () {
+        final captured = <String>[];
+        LibGhostty.setLogger((_, _, msg) => captured.add(msg));
+        LibGhostty.useStderrLogger();
 
-    test('useStderrLogger replaces a previously installed logger', () {
-      final captured = <String>[];
-      LibGhostty.setLogger((_, _, msg) => captured.add(msg));
-      LibGhostty.useStderrLogger();
+        terminal.write(_logTrigger);
 
-      terminal.write(_logTrigger);
-
-      expect(captured, isEmpty);
+        expect(captured, isEmpty);
+      });
     });
   });
 }
 
-/// Byte that reliably triggers a `stream`-scoped warning from the native
-/// parser ("invalid C0 character, ignoring: 0x3").
 final _logTrigger = Uint8List.fromList([0x03]);
 
 typedef _LogEntry = ({SysLogLevel level, String scope, String message});

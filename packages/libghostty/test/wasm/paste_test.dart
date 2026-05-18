@@ -12,11 +12,8 @@ void main() {
   setUpAll(setUpWasm);
 
   group('pasteIsSafe', () {
-    test('rejects content with newlines', () {
+    test('rejects unsafe content', () {
       expect(pasteIsSafe('rm -rf /\n'), isFalse);
-    });
-
-    test('rejects content with bracketed paste end marker', () {
       expect(pasteIsSafe('\x1b[201~injected'), isFalse);
     });
 
@@ -32,23 +29,19 @@ void main() {
     test('wraps with bracketed paste markers when bracketed', () {
       final result = pasteEncode('hello', bracketed: true);
       final decoded = utf8.decode(result);
-      expect(decoded, startsWith('\x1b[200~'));
-      expect(decoded, endsWith('\x1b[201~'));
-      expect(decoded, contains('hello'));
+      expect(decoded, '\x1b[200~hello\x1b[201~');
     });
 
     test('omits bracketed paste markers when not bracketed', () {
       final result = pasteEncode('hello', bracketed: false);
       final decoded = utf8.decode(result);
-      expect(decoded, isNot(contains('\x1b[200~')));
-      expect(decoded, contains('hello'));
+      expect(decoded, 'hello');
     });
 
     test('replaces newlines with carriage returns when not bracketed', () {
       final result = pasteEncode('a\nb', bracketed: false);
       final decoded = utf8.decode(result);
-      expect(decoded, contains('\r'));
-      expect(decoded, isNot(contains('\n')));
+      expect(decoded, 'a\rb');
     });
   });
 }

@@ -3,44 +3,47 @@ import 'package:test/test.dart';
 
 void main() {
   group('KittyKeyFlags', () {
-    test('disabled has value 0', () {
-      expect(const KittyKeyFlags.disabled().isDisabled, isTrue);
+    group('constructors', () {
+      test('create disabled and enabled flags', () {
+        expect(const KittyKeyFlags.disabled().isDisabled, isTrue);
+        expect(const KittyKeyFlags.all().isDisabled, isFalse);
+      });
     });
 
-    test('all combines all flags', () {
-      expect(const KittyKeyFlags.all().isDisabled, isFalse);
+    group('|', () {
+      test('combines flags', () {
+        final combined =
+            const KittyKeyFlags.disambiguate() |
+            const KittyKeyFlags.reportEvents();
+        expect(combined.isDisabled, isFalse);
+      });
     });
 
-    test('| operator combines flags', () {
-      final combined =
-          const KittyKeyFlags.disambiguate() |
-          const KittyKeyFlags.reportEvents();
-      expect(combined.isDisabled, isFalse);
-    });
+    group('equality', () {
+      test('compares by value', () {
+        final a =
+            const KittyKeyFlags.disambiguate() |
+            const KittyKeyFlags.reportEvents();
+        final b =
+            const KittyKeyFlags.reportEvents() |
+            const KittyKeyFlags.disambiguate();
+        expect(a, equals(b));
 
-    test('equality compares by value', () {
-      final a =
-          const KittyKeyFlags.disambiguate() |
-          const KittyKeyFlags.reportEvents();
-      final b =
-          const KittyKeyFlags.reportEvents() |
-          const KittyKeyFlags.disambiguate();
-      expect(a, equals(b));
-    });
+        final hashA =
+            const KittyKeyFlags.disambiguate() |
+            const KittyKeyFlags.reportAll();
+        final hashB =
+            const KittyKeyFlags.reportAll() |
+            const KittyKeyFlags.disambiguate();
+        expect(hashA.hashCode, equals(hashB.hashCode));
+      });
 
-    test('inequality for different values', () {
-      expect(
-        const KittyKeyFlags.disambiguate(),
-        isNot(equals(const KittyKeyFlags.reportEvents())),
-      );
-    });
-
-    test('hashCode is consistent with equality', () {
-      final a =
-          const KittyKeyFlags.disambiguate() | const KittyKeyFlags.reportAll();
-      final b =
-          const KittyKeyFlags.reportAll() | const KittyKeyFlags.disambiguate();
-      expect(a.hashCode, equals(b.hashCode));
+      test('distinguishes different values', () {
+        expect(
+          const KittyKeyFlags.disambiguate(),
+          isNot(equals(const KittyKeyFlags.reportEvents())),
+        );
+      });
     });
   });
 }

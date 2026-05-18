@@ -3,38 +3,32 @@ import 'package:test/test.dart';
 
 void main() {
   group('LibGhosttyException', () {
-    test('OutOfMemoryException has default message', () {
-      const exception = OutOfMemoryException();
-      expect(exception.message, 'Memory allocation failed.');
-      expect(exception.toString(), 'Memory allocation failed.');
-    });
+    group('message', () {
+      test('uses default messages', () {
+        const outOfMemory = OutOfMemoryException();
+        expect(outOfMemory.message, 'Memory allocation failed.');
+        expect(outOfMemory.toString(), 'Memory allocation failed.');
 
-    test('OutOfMemoryException accepts custom message', () {
-      const exception = OutOfMemoryException('Custom OOM message');
-      expect(exception.message, 'Custom OOM message');
-    });
+        const invalidValue = InvalidValueException();
+        expect(invalidValue.message, 'Invalid value provided.');
+        expect(invalidValue.toString(), 'Invalid value provided.');
 
-    test('InvalidValueException has default message', () {
-      const exception = InvalidValueException();
-      expect(exception.message, 'Invalid value provided.');
-      expect(exception.toString(), 'Invalid value provided.');
-    });
+        const noValue = NoValueException();
+        expect(noValue.message, 'Requested value is not set.');
+        expect(noValue.toString(), 'Requested value is not set.');
 
-    test('InvalidValueException accepts custom message', () {
-      const exception = InvalidValueException('Bad input');
-      expect(exception.message, 'Bad input');
-    });
+        const outOfSpace = OutOfSpaceException();
+        expect(outOfSpace.message, 'Output buffer too small.');
+        expect(outOfSpace.toString(), 'Output buffer too small.');
+      });
 
-    test('NoValueException has default message', () {
-      const exception = NoValueException();
-      expect(exception.message, 'Requested value is not set.');
-      expect(exception.toString(), 'Requested value is not set.');
-    });
+      test('uses custom messages', () {
+        const outOfMemory = OutOfMemoryException('Custom OOM message');
+        expect(outOfMemory.message, 'Custom OOM message');
 
-    test('OutOfSpaceException has default message', () {
-      const exception = OutOfSpaceException();
-      expect(exception.message, 'Output buffer too small.');
-      expect(exception.toString(), 'Output buffer too small.');
+        const invalidValue = InvalidValueException('Bad input');
+        expect(invalidValue.message, 'Bad input');
+      });
     });
   });
 }

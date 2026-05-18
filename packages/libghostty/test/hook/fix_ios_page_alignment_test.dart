@@ -7,31 +7,25 @@ import 'dart:typed_data';
 import 'package:libghostty/src/hook/fix_ios_page_alignment.dart';
 import 'package:test/test.dart';
 
-const _machoMagic64 = 0xFEEDFACF;
-const _lcSegment64 = 0x19;
-const _segmentCmdSize = 72;
-const _headerSize = 32;
-const _pageSize = 16384;
-
 void main() {
-  late Directory tmpDir;
-
-  setUp(() {
-    tmpDir = Directory.systemTemp.createTempSync('ios_alignment_test_');
-  });
-
-  tearDown(() {
-    tmpDir.deleteSync(recursive: true);
-  });
-
-  File writeFile(Uint8List bytes) {
-    final file = File('${tmpDir.path}/test.dylib');
-    file.writeAsBytesSync(bytes);
-    return file;
-  }
-
   group('fixIosPageAlignment', () {
-    test('patches non-aligned vmsize to page boundary', () {
+    late Directory tmpDir;
+
+    setUp(() {
+      tmpDir = Directory.systemTemp.createTempSync('ios_alignment_test_');
+    });
+
+    tearDown(() {
+      tmpDir.deleteSync(recursive: true);
+    });
+
+    File writeFile(Uint8List bytes) {
+      final file = File('${tmpDir.path}/test.dylib');
+      file.writeAsBytesSync(bytes);
+      return file;
+    }
+
+    test('patches non-aligned segment sizes to page boundary', () {
       final binary = _buildMachO([
         _SegmentSpec(
           '__TEXT',
@@ -49,23 +43,6 @@ void main() {
       final vmsize = patched.getUint64(_headerSize + 32, Endian.little);
       expect(vmsize, equals(_pageSize));
       expect(vmsize % _pageSize, equals(0));
-    });
-
-    test('patches non-aligned filesize to page boundary', () {
-      final binary = _buildMachO([
-        _SegmentSpec(
-          '__TEXT',
-          vmaddr: 0,
-          vmsize: 0x3000,
-          fileoff: 0,
-          filesize: 0x3000,
-        ),
-      ]);
-
-      final file = writeFile(binary);
-      fixIosPageAlignment(file);
-
-      final patched = ByteData.sublistView(file.readAsBytesSync());
       final filesize = patched.getUint64(_headerSize + 48, Endian.little);
       expect(filesize, equals(_pageSize));
       expect(filesize % _pageSize, equals(0));
@@ -89,7 +66,7 @@ void main() {
       expect(file.readAsBytesSync(), equals(original));
     });
 
-    test('skips non-MachO files', () {
+    test('skips unsupported files', () {
       final notMachO = Uint8List(128);
       ByteData.sublistView(notMachO).setUint32(0, 0x12345678, Endian.little);
 
@@ -98,15 +75,13 @@ void main() {
       fixIosPageAlignment(file);
 
       expect(file.readAsBytesSync(), equals(original));
-    });
 
-    test('skips files smaller than header size', () {
       final tiny = Uint8List(16);
-      final original = Uint8List.fromList(tiny);
-      final file = writeFile(tiny);
-      fixIosPageAlignment(file);
+      final originalTiny = Uint8List.fromList(tiny);
+      final tinyFile = writeFile(tiny);
+      fixIosPageAlignment(tinyFile);
 
-      expect(file.readAsBytesSync(), equals(original));
+      expect(tinyFile.readAsBytesSync(), equals(originalTiny));
     });
 
     test('handles __LINKEDIT: aligns vmsize but preserves filesize', () {
@@ -196,21 +171,11 @@ void main() {
   });
 }
 
-class _SegmentSpec {
-  final String name;
-  final int vmaddr;
-  final int vmsize;
-  final int fileoff;
-  final int filesize;
-
-  _SegmentSpec(
-    this.name, {
-    required this.vmaddr,
-    required this.vmsize,
-    required this.fileoff,
-    required this.filesize,
-  });
-}
+const _headerSize = 32;
+const _lcSegment64 = 0x19;
+const _machoMagic64 = 0xFEEDFACF;
+const _pageSize = 16384;
+const _segmentCmdSize = 72;
 
 Uint8List _buildMachO(List<_SegmentSpec> segments) {
   final totalSize = _headerSize + segments.length * _segmentCmdSize;
@@ -249,4 +214,20 @@ Uint8List _buildMachO(List<_SegmentSpec> segments) {
   }
 
   return binary;
+}
+
+class _SegmentSpec {
+  final String name;
+  final int vmaddr;
+  final int vmsize;
+  final int fileoff;
+  final int filesize;
+
+  _SegmentSpec(
+    this.name, {
+    required this.vmaddr,
+    required this.vmsize,
+    required this.fileoff,
+    required this.filesize,
+  });
 }

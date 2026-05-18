@@ -8,6 +8,42 @@ import 'package:hooks/hooks.dart';
 import 'package:libghostty/src/hook/library_provider.dart';
 import 'package:test/test.dart';
 
+void main() {
+  group('LibraryProvider', () {
+    group('zigAvailable', () {
+      test('returns a boolean', () {
+        expect(LibraryProvider.zigAvailable(), isA<bool>());
+      });
+    });
+
+    group('subtypes', () {
+      test('are exhaustive in pattern matching', () {
+        expect(
+          _describeProvider(DownloadPrebuilt(createTestBuildInput())),
+          'download',
+        );
+      });
+
+      test('implement LibraryProvider', () {
+        expect(
+          DownloadPrebuilt(createTestBuildInput()),
+          isA<LibraryProvider>(),
+        );
+      });
+    });
+
+    group('libraryExtension', () {
+      test('maps OS to native library file extension', () {
+        expect(libraryExtension(OS.macOS), 'dylib');
+        expect(libraryExtension(OS.iOS), 'dylib');
+        expect(libraryExtension(OS.windows), 'dll');
+        expect(libraryExtension(OS.linux), 'so');
+        expect(libraryExtension(OS.android), 'so');
+      });
+    });
+  });
+}
+
 BuildInput createTestBuildInput({
   OS os = OS.macOS,
   Architecture arch = Architecture.arm64,
@@ -35,37 +71,9 @@ BuildInput createTestBuildInput({
   });
 }
 
-void main() {
-  group('zigAvailable', () {
-    test('returns a boolean', () {
-      expect(LibraryProvider.zigAvailable(), isA<bool>());
-    });
-  });
-
-  group('sealed class', () {
-    test('pattern match covers all subtypes', () {
-      String describe(LibraryProvider p) {
-        return switch (p) {
-          CompileFromSource() => 'compile',
-          DownloadPrebuilt() => 'download',
-        };
-      }
-
-      expect(describe(DownloadPrebuilt(createTestBuildInput())), 'download');
-    });
-
-    test('all subtypes are LibraryProvider', () {
-      expect(DownloadPrebuilt(createTestBuildInput()), isA<LibraryProvider>());
-    });
-  });
-
-  group('libraryExtension', () {
-    test('maps OS to native library file extension', () {
-      expect(libraryExtension(OS.macOS), 'dylib');
-      expect(libraryExtension(OS.iOS), 'dylib');
-      expect(libraryExtension(OS.windows), 'dll');
-      expect(libraryExtension(OS.linux), 'so');
-      expect(libraryExtension(OS.android), 'so');
-    });
-  });
+String _describeProvider(LibraryProvider provider) {
+  return switch (provider) {
+    CompileFromSource() => 'compile',
+    DownloadPrebuilt() => 'download',
+  };
 }
