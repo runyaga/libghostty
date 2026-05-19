@@ -19,130 +19,88 @@ void main() {
       encoder.dispose();
     });
 
-    test('encodes Ctrl+C as ETX byte', () {
-      event.action = KeyAction.press;
-      event.key = Key.c;
-      event.mods = const Mods.ctrl();
+    group('encode', () {
+      String encode(Key key, {Mods mods = const Mods.none()}) {
+        event.action = KeyAction.press;
+        event.key = key;
+        event.mods = mods;
+        return encoder.encode(event);
+      }
 
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result.codeUnitAt(0), 0x03);
+      test('returns default key sequences', () {
+        expect(encode(Key.c, mods: const Mods.ctrl()), '\x03');
+        expect(encode(Key.enter), '\r');
+        expect(encode(Key.backspace), '\x7f');
+        expect(encode(Key.escape), '\x1b');
+        expect(encode(Key.shiftLeft), isEmpty);
+        expect(encode(Key.arrowUp), '\x1b[A');
+      });
     });
 
-    test('encodes Enter as carriage return', () {
-      event.action = KeyAction.press;
-      event.key = Key.enter;
+    group('setBackArrowKeyMode', () {
+      test('makes Backspace return backspace', () {
+        encoder.setBackArrowKeyMode(enabled: true);
 
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result.codeUnitAt(0), 0x0D);
+        event.action = KeyAction.press;
+        event.key = Key.backspace;
+
+        final result = encoder.encode(event);
+        expect(result, '\x08');
+      });
     });
 
-    test('encodes Backspace as delete by default', () {
-      event.action = KeyAction.press;
-      event.key = Key.backspace;
+    group('setCursorKeyApplication', () {
+      test('makes ArrowUp use SS3', () {
+        encoder.setCursorKeyApplication(enabled: true);
 
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result.codeUnitAt(0), 0x7F);
+        event.action = KeyAction.press;
+        event.key = Key.arrowUp;
+
+        final result = encoder.encode(event);
+        expect(result, '\x1bOA');
+      });
     });
 
-    test('encodes Backspace as backspace in back-arrow key mode', () {
-      encoder.setBackArrowKeyMode(enabled: true);
+    group('setKittyFlags', () {
+      test('uses Kitty protocol sequence', () {
+        encoder.setKittyFlags(const KittyKeyFlags.all());
 
-      event.action = KeyAction.press;
-      event.key = Key.backspace;
+        event.action = KeyAction.press;
+        event.key = Key.c;
+        event.mods = const Mods.ctrl();
+        event.utf8 = 'c';
+        event.unshiftedCodepoint = 0x63;
 
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result.codeUnitAt(0), 0x08);
+        final result = encoder.encode(event);
+        expect(result, contains('['));
+      });
+
+      test('returns long sequence without truncation', () {
+        encoder.setKittyFlags(const KittyKeyFlags.all());
+
+        event.action = KeyAction.press;
+        event.key = Key.a;
+        event.utf8 = 'a' * 100;
+        event.unshiftedCodepoint = 0x61;
+
+        final result = encoder.encode(event);
+        expect(result, startsWith('\x1b'));
+      });
     });
 
-    test('encodes Escape key', () {
-      event.action = KeyAction.press;
-      event.key = Key.escape;
+    group('sync', () {
+      test('applies terminal back-arrow key mode', () {
+        final terminal = Terminal(cols: 80, rows: 24);
+        addTearDown(terminal.dispose);
+        terminal.modeSet(const TerminalMode.backArrowKeyMode(), value: true);
 
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result.codeUnitAt(0), 0x1B);
-    });
+        encoder.sync(terminal);
+        event.action = KeyAction.press;
+        event.key = Key.backspace;
 
-    test('encodes with Kitty protocol flags', () {
-      encoder.setKittyFlags(const KittyKeyFlags.all());
-
-      event.action = KeyAction.press;
-      event.key = Key.c;
-      event.mods = const Mods.ctrl();
-      event.utf8 = 'c';
-      event.unshiftedCodepoint = 0x63;
-
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result, contains('['));
-    });
-
-    test('modifier-only key produces no output without Kitty flags', () {
-      event.action = KeyAction.press;
-      event.key = Key.shiftLeft;
-
-      final result = encoder.encode(event);
-      expect(result, isEmpty);
-    });
-
-    test('cursor key application mode changes arrow encoding', () {
-      encoder.setCursorKeyApplication(enabled: true);
-
-      event.action = KeyAction.press;
-      event.key = Key.arrowUp;
-
-      final result = encoder.encode(event);
-      expect(result, contains('O'));
-    });
-
-    test('cursor key normal mode for arrows', () {
-      event.action = KeyAction.press;
-      event.key = Key.arrowUp;
-
-      final result = encoder.encode(event);
-      expect(result, contains('['));
-    });
-
-    test('all encoder options can be set without error', () {
-      encoder.setCursorKeyApplication(enabled: true);
-      encoder.setKeypadKeyApplication(enabled: true);
-      encoder.setIgnoreKeypadWithNumLock(enabled: true);
-      encoder.setAltEscPrefix(enabled: true);
-      encoder.setModifyOtherKeys(enabled: true);
-      encoder.setBackArrowKeyMode(enabled: true);
-      encoder.setKittyFlags(const KittyKeyFlags.disambiguate());
-      encoder.setOptionAsAlt(OptionAsAlt.true$);
-    });
-
-    test('sync applies terminal back-arrow key mode', () {
-      final terminal = Terminal(cols: 80, rows: 24);
-      addTearDown(terminal.dispose);
-      terminal.modeSet(const TerminalMode.backArrowKeyMode(), value: true);
-
-      encoder.sync(terminal);
-      event.action = KeyAction.press;
-      event.key = Key.backspace;
-
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result.codeUnitAt(0), 0x08);
-    });
-
-    test('encodes sequence exceeding initial 128-byte buffer', () {
-      encoder.setKittyFlags(const KittyKeyFlags.all());
-
-      event.action = KeyAction.press;
-      event.key = Key.a;
-      event.utf8 = 'a' * 100;
-      event.unshiftedCodepoint = 0x61;
-
-      final result = encoder.encode(event);
-      expect(result, isNotEmpty);
-      expect(result, startsWith('\x1b'));
+        final result = encoder.encode(event);
+        expect(result, '\x08');
+      });
     });
   });
 }

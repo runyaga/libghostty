@@ -6,14 +6,15 @@ import 'package:test/test.dart';
 
 import '../helpers/setup.dart';
 
-Matcher hasTag(SgrAttributeTag tag) =>
-    predicate<SgrAttribute>((a) => a.tag == tag, 'has tag $tag');
-
 void main() {
   setUpAll(setUpWasm);
 
   group('SgrParser', () {
     late SgrParser parser;
+
+    Matcher hasTag(SgrAttributeTag tag) {
+      return predicate<SgrAttribute>((a) => a.tag == tag, 'has tag $tag');
+    }
 
     setUp(() {
       parser = SgrParser();
@@ -23,98 +24,80 @@ void main() {
       parser.dispose();
     });
 
-    test('parses bold', () {
-      final attrs = parser.parse([1]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.bold));
-    });
+    group('parse', () {
+      test('returns simple attributes', () {
+        final bold = parser.parse([1]);
+        expect(bold, hasLength(1));
+        expect(bold.first, hasTag(SgrAttributeTag.bold));
 
-    test('parses bold and red foreground', () {
-      final attrs = parser.parse([1, 31]);
-      expect(attrs, hasLength(2));
-      expect(attrs[0], hasTag(SgrAttributeTag.bold));
-      expect(attrs[1], hasTag(SgrAttributeTag.fg8));
-      expect(attrs[1].paletteIndex, const NamedColor.red());
-    });
+        final italic = parser.parse([3]);
+        expect(italic, hasLength(1));
+        expect(italic.first, hasTag(SgrAttributeTag.italic));
 
-    test('parses italic', () {
-      final attrs = parser.parse([3]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.italic));
-    });
+        final reset = parser.parse([0]);
+        expect(reset, hasLength(1));
+        expect(reset.first, hasTag(SgrAttributeTag.unset));
 
-    test('parses reset (SGR 0)', () {
-      final attrs = parser.parse([0]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.unset));
-    });
+        final strikethrough = parser.parse([9]);
+        expect(strikethrough, hasLength(1));
+        expect(strikethrough.first, hasTag(SgrAttributeTag.strikethrough));
 
-    test('parses RGB foreground color', () {
-      final attrs = parser.parse([38, 2, 51, 102, 153]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.directColorFg));
-      expect(attrs.first.color, const RgbColor(51, 102, 153));
-    });
+        final inverse = parser.parse([7]);
+        expect(inverse, hasLength(1));
+        expect(inverse.first, hasTag(SgrAttributeTag.inverse));
+      });
 
-    test('parses RGB background color', () {
-      final attrs = parser.parse([48, 2, 10, 20, 30]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.directColorBg));
-      expect(attrs.first.color, const RgbColor(10, 20, 30));
-    });
+      test('returns color attributes', () {
+        final foreground = parser.parse([38, 2, 51, 102, 153]);
+        expect(foreground, hasLength(1));
+        expect(foreground.first, hasTag(SgrAttributeTag.directColorFg));
+        expect(foreground.first.color, const RgbColor(51, 102, 153));
 
-    test('parses 256-color foreground', () {
-      final attrs = parser.parse([38, 5, 196]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.fg256));
-      expect(attrs.first.paletteIndex, 196);
-    });
+        final background = parser.parse([48, 2, 10, 20, 30]);
+        expect(background, hasLength(1));
+        expect(background.first, hasTag(SgrAttributeTag.directColorBg));
+        expect(background.first.color, const RgbColor(10, 20, 30));
 
-    test('parses curly underline with colon separator', () {
-      final attrs = parser.parse([4, 3], separators: [':', ';']);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.underline));
-      expect(attrs.first.underlineStyle, UnderlineStyle.curly);
-    });
+        final palette = parser.parse([38, 5, 196]);
+        expect(palette, hasLength(1));
+        expect(palette.first, hasTag(SgrAttributeTag.fg256));
+        expect(palette.first.paletteIndex, 196);
+      });
 
-    test('parses complex styling: curly underline + RGB foreground', () {
-      final attrs = parser.parse(
-        [4, 3, 38, 2, 51, 51, 51],
-        separators: [':', ';', ';', ';', ';', ';', ';'],
-      );
-      expect(attrs.length, greaterThanOrEqualTo(2));
+      test('returns adjacent bold and palette foreground attributes', () {
+        final attrs = parser.parse([1, 31]);
+        expect(attrs, hasLength(2));
+        expect(attrs[0], hasTag(SgrAttributeTag.bold));
+        expect(attrs[1], hasTag(SgrAttributeTag.fg8));
+        expect(attrs[1].paletteIndex, const NamedColor.red());
+      });
 
-      final underline = attrs
-          .where((a) => a.tag == SgrAttributeTag.underline)
-          .firstOrNull;
-      expect(underline, isNotNull);
-      expect(underline!.underlineStyle, UnderlineStyle.curly);
+      test('returns curly underline with colon separator', () {
+        final attrs = parser.parse([4, 3], separators: [':', ';']);
+        expect(attrs, hasLength(1));
+        expect(attrs.first, hasTag(SgrAttributeTag.underline));
+        expect(attrs.first.underlineStyle, UnderlineStyle.curly);
+      });
 
-      final fg = attrs
-          .where((a) => a.tag == SgrAttributeTag.directColorFg)
-          .firstOrNull;
-      expect(fg, isNotNull);
-      expect(fg!.color, const RgbColor(51, 51, 51));
-    });
+      test('returns colon underline before RGB foreground', () {
+        final attrs = parser.parse(
+          [4, 3, 38, 2, 51, 51, 51],
+          separators: [':', ';', ';', ';', ';', ';', ';'],
+        );
+        expect(attrs, hasLength(2));
+        expect(attrs[0], hasTag(SgrAttributeTag.underline));
+        expect(attrs[0].underlineStyle, UnderlineStyle.curly);
+        expect(attrs[1], hasTag(SgrAttributeTag.directColorFg));
+        expect(attrs[1].color, const RgbColor(51, 51, 51));
+      });
 
-    test('parses strikethrough', () {
-      final attrs = parser.parse([9]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.strikethrough));
-    });
+      test('can be called repeatedly', () {
+        final first = parser.parse([1]);
+        expect(first.first, hasTag(SgrAttributeTag.bold));
 
-    test('parses inverse', () {
-      final attrs = parser.parse([7]);
-      expect(attrs, hasLength(1));
-      expect(attrs.first, hasTag(SgrAttributeTag.inverse));
-    });
-
-    test('parser can be reused', () {
-      final first = parser.parse([1]);
-      expect(first.first, hasTag(SgrAttributeTag.bold));
-
-      final second = parser.parse([3]);
-      expect(second.first, hasTag(SgrAttributeTag.italic));
+        final second = parser.parse([3]);
+        expect(second.first, hasTag(SgrAttributeTag.italic));
+      });
     });
   });
 }

@@ -33,47 +33,120 @@ void main() {
       terminal.dispose();
     });
 
-    test('initial dimensions', () {
-      renderState.update(terminal);
-      expect(renderState.cols, 80);
-      expect(renderState.rows, 24);
+    group('constructor', () {
+      test('initializes dimensions', () {
+        renderState.update(terminal);
+        expect(renderState.cols, 80);
+        expect(renderState.rows, 24);
+      });
     });
 
-    test('write bytes and read screen', () {
-      terminal.write(Uint8List.fromList('Hello'.codeUnits));
-      final h = readCellAt(terminal, 0, 0);
-      expect(h.content, 'H');
-      final o = readCellAt(terminal, 0, 4);
-      expect(o.content, 'o');
+    group('write', () {
+      test('updates screen cells', () {
+        terminal.write(Uint8List.fromList('Hello'.codeUnits));
+        final h = readCellAt(terminal, 0, 0);
+        expect(h.content, 'H');
+        final o = readCellAt(terminal, 0, 4);
+        expect(o.content, 'o');
+      });
+
+      test('applies SGR style to text', () {
+        terminal.write(Uint8List.fromList('\x1b[1;31mBold Red'.codeUnits));
+        final cell = readCellAt(terminal, 0, 0);
+        expect(cell.content, 'B');
+        expect(cell.style.bold, isTrue);
+        expect(cell.foreground, isA<PaletteColor>());
+      });
+
+      test('decodes multi-byte UTF-8', () {
+        terminal.write(Uint8List.fromList([0xC3, 0xA9]));
+        final cell = readCellAt(terminal, 0, 0);
+        expect(cell.content, '\u00E9');
+      });
+
+      test('decodes split UTF-8 across writes', () {
+        terminal.write(Uint8List.fromList([0xC3]));
+        terminal.write(Uint8List.fromList([0xA9]));
+        final cell = readCellAt(terminal, 0, 0);
+        expect(cell.content, '\u00E9');
+      });
+
+      test('updates row text content', () {
+        terminal.write(Uint8List.fromList('Hello World'.codeUnits));
+        final text = readRowText(terminal, 0);
+        expect(text, startsWith('Hello World'));
+      });
+
+      test('handles CRLF line breaks', () {
+        terminal.write(Uint8List.fromList('Line1\r\nLine2'.codeUnits));
+        final cell00 = readCellAt(terminal, 0, 0);
+        expect(cell00.content, 'L');
+        final cell10 = readCellAt(terminal, 1, 0);
+        expect(cell10.content, 'L');
+        final row0 = readRowText(terminal, 0);
+        expect(row0, startsWith('Line1'));
+        final row1 = readRowText(terminal, 1);
+        expect(row1, startsWith('Line2'));
+      });
+
+      test('sets wide character width on leading and trailing cells', () {
+        terminal.write(
+          Uint8List.fromList([0xE6, 0x97, 0xA5, ...('A'.codeUnits)]),
+        );
+        final cell0 = readCellAt(terminal, 0, 0);
+        expect(cell0.wide, CellWidth.wide);
+        final cell1 = readCellAt(terminal, 0, 1);
+        expect(cell1.wide, CellWidth.spacerTail);
+        final cell2 = readCellAt(terminal, 0, 2);
+        expect(cell2.wide, CellWidth.narrow);
+      });
+
+      test('wraps long lines across rows', () {
+        final t = Terminal(cols: 5, rows: 3);
+        final rs = RenderState();
+        addTearDown(rs.dispose);
+        addTearDown(t.dispose);
+        t.write(Uint8List.fromList('ABCDEFGH'.codeUnits));
+
+        rs.update(t);
+        final cellE = readCellAt(t, 0, 4);
+        expect(cellE.content, 'E');
+        expect(isRowWrapped(t, 0), isTrue);
+        final cellF = readCellAt(t, 1, 0);
+        expect(cellF.content, 'F');
+        final cellH = readCellAt(t, 1, 2);
+        expect(cellH.content, 'H');
+        expect(isRowWrapped(t, 1), isFalse);
+      });
     });
 
-    test('cursor tracks position', () {
-      terminal.write(Uint8List.fromList('Hi'.codeUnits));
-      renderState.update(terminal);
-      expect(renderState.cursor.col, 2);
-      expect(renderState.cursor.row, 0);
-    });
+    group('cursor', () {
+      test('tracks write position', () {
+        terminal.write(Uint8List.fromList('Hi'.codeUnits));
+        renderState.update(terminal);
+        expect(renderState.cursor.col, 2);
+        expect(renderState.cursor.row, 0);
+      });
 
-    test('cursor visibility', () {
-      terminal.write(Uint8List.fromList('\x1b[?25l'.codeUnits));
-      renderState.update(terminal);
-      expect(renderState.cursor.visible, isFalse);
-      terminal.write(Uint8List.fromList('\x1b[?25h'.codeUnits));
-      renderState.update(terminal);
-      expect(renderState.cursor.visible, isTrue);
+      test('tracks visibility mode', () {
+        terminal.write(Uint8List.fromList('\x1b[?25l'.codeUnits));
+        renderState.update(terminal);
+        expect(renderState.cursor.visible, isFalse);
+        terminal.write(Uint8List.fromList('\x1b[?25h'.codeUnits));
+        renderState.update(terminal);
+        expect(renderState.cursor.visible, isTrue);
+      });
     });
 
     group('modes', () {
-      test('bracketedPaste tracks DECSET 2004', () {
+      test('tracks default-off DEC private modes', () {
+        expect(terminal.modeGet(const .cursorKeys()), isFalse);
+
         terminal.write(Uint8List.fromList('\x1b[?2004h'.codeUnits));
         expect(terminal.modeGet(const .bracketedPaste()), isTrue);
 
         terminal.write(Uint8List.fromList('\x1b[?2004l'.codeUnits));
         expect(terminal.modeGet(const .bracketedPaste()), isFalse);
-      });
-
-      test('cursorKeyApplication tracks DECSET 1', () {
-        expect(terminal.modeGet(const .cursorKeys()), isFalse);
 
         terminal.write(Uint8List.fromList('\x1b[?1h'.codeUnits));
         expect(terminal.modeGet(const .cursorKeys()), isTrue);
@@ -82,7 +155,7 @@ void main() {
         expect(terminal.modeGet(const .cursorKeys()), isFalse);
       });
 
-      test('autoWrap tracks DECSET 7', () {
+      test('tracks default-on DEC private modes', () {
         expect(terminal.modeGet(const .autoWrap()), isTrue);
 
         terminal.write(Uint8List.fromList('\x1b[?7l'.codeUnits));
@@ -92,7 +165,7 @@ void main() {
         expect(terminal.modeGet(const .autoWrap()), isTrue);
       });
 
-      test('insertMode tracks SM 4', () {
+      test('tracks ANSI modes', () {
         expect(terminal.modeGet(const .insert()), isFalse);
 
         terminal.write(Uint8List.fromList('\x1b[4h'.codeUnits));
@@ -107,22 +180,16 @@ void main() {
           expect(terminal.mouseTracking, MouseTracking.none);
         });
 
-        test('DECSET 9 activates x10', () {
+        test('tracks DECSET tracking modes', () {
           terminal.write(Uint8List.fromList('\x1b[?9h'.codeUnits));
           expect(terminal.mouseTracking, MouseTracking.x10);
-        });
 
-        test('DECSET 1000 activates normal', () {
           terminal.write(Uint8List.fromList('\x1b[?1000h'.codeUnits));
           expect(terminal.mouseTracking, MouseTracking.normal);
-        });
 
-        test('DECSET 1002 activates buttonEvent', () {
           terminal.write(Uint8List.fromList('\x1b[?1002h'.codeUnits));
           expect(terminal.mouseTracking, MouseTracking.button);
-        });
 
-        test('DECSET 1003 activates anyEvent', () {
           terminal.write(Uint8List.fromList('\x1b[?1003h'.codeUnits));
           expect(terminal.mouseTracking, MouseTracking.any);
         });
@@ -137,55 +204,18 @@ void main() {
       });
     });
 
-    test('alternate screen switch', () {
-      terminal.write(Uint8List.fromList('Primary'.codeUnits));
-      terminal.write(Uint8List.fromList('\x1b[?1049h'.codeUnits));
-      expect(terminal.activeScreen, TerminalScreen.alternate);
-      final altCell = readCellAt(terminal, 0, 0);
-      expect(altCell.isEmpty, isTrue);
-      terminal.write(Uint8List.fromList('\x1b[?1049l'.codeUnits));
-      expect(terminal.activeScreen, TerminalScreen.primary);
-      final priCell = readCellAt(terminal, 0, 0);
-      expect(priCell.content, 'P');
-    });
-
-    test('styled text', () {
-      terminal.write(Uint8List.fromList('\x1b[1;31mBold Red'.codeUnits));
-      final cell = readCellAt(terminal, 0, 0);
-      expect(cell.content, 'B');
-      expect(cell.style.bold, isTrue);
-      expect(cell.foreground, isA<PaletteColor>());
-    });
-
-    test('multi-byte UTF-8', () {
-      terminal.write(Uint8List.fromList([0xC3, 0xA9]));
-      final cell = readCellAt(terminal, 0, 0);
-      expect(cell.content, '\u00E9');
-    });
-
-    test('split UTF-8 across writes', () {
-      terminal.write(Uint8List.fromList([0xC3]));
-      terminal.write(Uint8List.fromList([0xA9]));
-      final cell = readCellAt(terminal, 0, 0);
-      expect(cell.content, '\u00E9');
-    });
-
-    test('row text content', () {
-      terminal.write(Uint8List.fromList('Hello World'.codeUnits));
-      final text = readRowText(terminal, 0);
-      expect(text, startsWith('Hello World'));
-    });
-
-    test('CRLF line breaks', () {
-      terminal.write(Uint8List.fromList('Line1\r\nLine2'.codeUnits));
-      final cell00 = readCellAt(terminal, 0, 0);
-      expect(cell00.content, 'L');
-      final cell10 = readCellAt(terminal, 1, 0);
-      expect(cell10.content, 'L');
-      final row0 = readRowText(terminal, 0);
-      expect(row0, startsWith('Line1'));
-      final row1 = readRowText(terminal, 1);
-      expect(row1, startsWith('Line2'));
+    group('activeScreen', () {
+      test('switches between primary and alternate screens', () {
+        terminal.write(Uint8List.fromList('Primary'.codeUnits));
+        terminal.write(Uint8List.fromList('\x1b[?1049h'.codeUnits));
+        expect(terminal.activeScreen, TerminalScreen.alternate);
+        final altCell = readCellAt(terminal, 0, 0);
+        expect(altCell.isEmpty, isTrue);
+        terminal.write(Uint8List.fromList('\x1b[?1049l'.codeUnits));
+        expect(terminal.activeScreen, TerminalScreen.primary);
+        final priCell = readCellAt(terminal, 0, 0);
+        expect(priCell.content, 'P');
+      });
     });
 
     group('listeners', () {
@@ -272,9 +302,11 @@ void main() {
       test('no content duplication after shrink', () {
         final t = Terminal(cols: 10, rows: 6);
         addTearDown(t.dispose);
-        for (var i = 0; i < 6; i++) {
-          t.write(Uint8List.fromList('Row_$i\r\n'.codeUnits));
-        }
+        t.write(
+          Uint8List.fromList(
+            'Row_0\r\nRow_1\r\nRow_2\r\nRow_3\r\nRow_4\r\nRow_5\r\n'.codeUnits,
+          ),
+        );
 
         t.resize(cols: 10, rows: 3);
 
@@ -300,17 +332,19 @@ void main() {
           t,
         ).map((l) => l.trimRight()).where((l) => l.isNotEmpty).toList();
 
-        for (final line in afterShrink) {
-          expect(afterGrow, contains(line));
-        }
+        expect(afterGrow, containsAllInOrder(afterShrink));
       });
 
       test('multiple resize cycles maintain integrity', () {
         final t = Terminal(cols: 10, rows: 8);
         addTearDown(t.dispose);
-        for (var i = 0; i < 8; i++) {
-          t.write(Uint8List.fromList('Line$i\r\n'.codeUnits));
-        }
+        t.write(
+          Uint8List.fromList(
+            'Line0\r\nLine1\r\nLine2\r\nLine3\r\n'
+                    'Line4\r\nLine5\r\nLine6\r\nLine7\r\n'
+                .codeUnits,
+          ),
+        );
 
         t.resize(cols: 10, rows: 4);
         expect(TerminalDump.hasContentOverlap(t), isFalse);
@@ -321,18 +355,7 @@ void main() {
         t.resize(cols: 10, rows: 2);
         expect(TerminalDump.hasContentOverlap(t), isFalse);
 
-        final all = TerminalDump.nonEmptyContent(t);
-        for (var i = 0; i < all.length - 1; i++) {
-          final currentNum = int.tryParse(
-            all[i].replaceAll(RegExp('[^0-9]'), ''),
-          );
-          final nextNum = int.tryParse(
-            all[i + 1].replaceAll(RegExp('[^0-9]'), ''),
-          );
-          if (currentNum != null && nextNum != null) {
-            expect(currentNum, lessThan(nextNum));
-          }
-        }
+        expect(TerminalDump.nonEmptyContent(t), ['Line7']);
       });
 
       test('column shrink preserves content within new width', () {
@@ -378,12 +401,14 @@ void main() {
         });
 
         test('multiple dispose-recreate cycles produce clean screens', () {
-          for (var i = 0; i < 5; i++) {
-            final t = Terminal(cols: 40, rows: 10);
-            _expectAllCellsEmpty(t);
-            t.write(Uint8List.fromList('Cycle $i data fill'.codeUnits));
-            t.dispose();
-          }
+          final first = Terminal(cols: 40, rows: 10);
+          _expectAllCellsEmpty(first);
+          first.write(Uint8List.fromList('Cycle 1 data fill'.codeUnits));
+          first.dispose();
+
+          final second = Terminal(cols: 40, rows: 10);
+          addTearDown(second.dispose);
+          _expectAllCellsEmpty(second);
         });
 
         test(
@@ -431,39 +456,6 @@ void main() {
           expect(cellM.content, 'M');
         });
       });
-    });
-
-    test('wide char sets CellWidth on both cells', () {
-      terminal.write(
-        Uint8List.fromList([
-          0xE6, 0x97, 0xA5, // U+65E5
-          ...('A'.codeUnits),
-        ]),
-      );
-      final cell0 = readCellAt(terminal, 0, 0);
-      expect(cell0.wide, CellWidth.wide);
-      final cell1 = readCellAt(terminal, 0, 1);
-      expect(cell1.wide, CellWidth.spacerTail);
-      final cell2 = readCellAt(terminal, 0, 2);
-      expect(cell2.wide, CellWidth.narrow);
-    });
-
-    test('long line wraps across rows with correct cells', () {
-      final t = Terminal(cols: 5, rows: 3);
-      final rs = RenderState();
-      addTearDown(rs.dispose);
-      addTearDown(t.dispose);
-      t.write(Uint8List.fromList('ABCDEFGH'.codeUnits));
-
-      rs.update(t);
-      final cellE = readCellAt(t, 0, 4);
-      expect(cellE.content, 'E');
-      expect(isRowWrapped(t, 0), isTrue);
-      final cellF = readCellAt(t, 1, 0);
-      expect(cellF.content, 'F');
-      final cellH = readCellAt(t, 1, 2);
-      expect(cellH.content, 'H');
-      expect(isRowWrapped(t, 1), isFalse);
     });
 
     group('dirtyState', () {
@@ -537,15 +529,15 @@ void main() {
       });
     });
 
-    group('callbacks', () {
-      test('writePty receives terminal responses', () {
+    group('onWritePty', () {
+      test('receives terminal responses', () {
         Uint8List? received;
         terminal.onWritePty = (data) => received = data;
         terminal.write(Uint8List.fromList('\x1b[5n'.codeUnits));
         expect(received, isNotNull);
       });
 
-      test('writePty data is correct DSR response', () {
+      test('receives DSR response bytes', () {
         Uint8List? received;
         terminal.onWritePty = (data) => received = data;
         terminal.write(Uint8List.fromList('\x1b[5n'.codeUnits));
@@ -554,7 +546,15 @@ void main() {
         expect(response, contains('\x1b[0n'));
       });
 
-      test('bell callback fires on BEL character', () {
+      test('can be cleared', () {
+        terminal.onWritePty = (data) {};
+        terminal.onWritePty = null;
+        terminal.write(Uint8List.fromList('\x1b[5n'.codeUnits));
+      });
+    });
+
+    group('onBell', () {
+      test('fires on BEL character', () {
         var bellCount = 0;
         terminal.onBell = () => bellCount++;
         terminal.write(Uint8List.fromList([0x07]));
@@ -567,63 +567,63 @@ void main() {
         terminal.write(Uint8List.fromList([0x07, 0x07, 0x07]));
         expect(count, 3);
       });
+    });
 
-      test('titleChanged fires on OSC 0', () {
+    group('onTitleChanged', () {
+      test('fires on OSC 0', () {
         var changed = false;
         terminal.onTitleChanged = () => changed = true;
         terminal.write(Uint8List.fromList('\x1b]0;New Title\x1b\\'.codeUnits));
         expect(changed, isTrue);
       });
+    });
 
-      test('null callback clears without error', () {
-        terminal.onWritePty = (data) {};
-        terminal.onWritePty = null;
-        terminal.write(Uint8List.fromList('\x1b[5n'.codeUnits));
-      });
-
-      test('deviceAttributes DA1 sends primary response', () {
+    group('onDeviceAttributes', () {
+      String responseFor(
+        String request,
+        DeviceAttributesResponse Function() callback,
+      ) {
         Uint8List? received;
         terminal.onWritePty = (data) => received = data;
-        terminal.onDeviceAttributes = () => const DeviceAttributesResponse(
-          primary: DeviceAttributesPrimary(
-            conformanceLevel: 65,
-            features: [1, 6, 22],
+        terminal.onDeviceAttributes = callback;
+        terminal.write(Uint8List.fromList(request.codeUnits));
+        expect(received, isNotNull);
+        return String.fromCharCodes(received!);
+      }
+
+      test('sends configured responses', () {
+        final primary = responseFor(
+          '\x1b[c',
+          () => const DeviceAttributesResponse(
+            primary: DeviceAttributesPrimary(
+              conformanceLevel: 65,
+              features: [1, 6, 22],
+            ),
           ),
         );
-        terminal.write(Uint8List.fromList('\x1b[c'.codeUnits));
-        expect(received, isNotNull);
-        final response = String.fromCharCodes(received!);
-        expect(response, contains('\x1b[?65;1;6;22c'));
-      });
+        expect(primary, contains('\x1b[?65;1;6;22c'));
 
-      test('deviceAttributes DA2 sends secondary response', () {
-        Uint8List? received;
-        terminal.onWritePty = (data) => received = data;
-        terminal.onDeviceAttributes = () => const DeviceAttributesResponse(
-          secondary: DeviceAttributesSecondary(
-            deviceType: 41,
-            firmwareVersion: 10,
+        final secondary = responseFor(
+          '\x1b[>c',
+          () => const DeviceAttributesResponse(
+            secondary: DeviceAttributesSecondary(
+              deviceType: 41,
+              firmwareVersion: 10,
+            ),
           ),
         );
-        terminal.write(Uint8List.fromList('\x1b[>c'.codeUnits));
-        expect(received, isNotNull);
-        final response = String.fromCharCodes(received!);
-        expect(response, contains('\x1b[>41;10;0c'));
-      });
+        expect(secondary, contains('\x1b[>41;10;0c'));
 
-      test('deviceAttributes DA3 sends tertiary response', () {
-        Uint8List? received;
-        terminal.onWritePty = (data) => received = data;
-        terminal.onDeviceAttributes = () => const DeviceAttributesResponse(
-          tertiary: DeviceAttributesTertiary(unitId: 42),
+        final tertiary = responseFor(
+          '\x1b[=c',
+          () => const DeviceAttributesResponse(
+            tertiary: DeviceAttributesTertiary(unitId: 42),
+          ),
         );
-        terminal.write(Uint8List.fromList('\x1b[=c'.codeUnits));
-        expect(received, isNotNull);
-        final response = String.fromCharCodes(received!);
-        expect(response, contains('!|0000002A'));
+        expect(tertiary, contains('!|0000002A'));
       });
 
-      test('deviceAttributes null callback uses default response', () {
+      test('uses default response when unset', () {
         Uint8List? received;
         terminal.onWritePty = (data) => received = data;
         terminal.onDeviceAttributes = null;
@@ -633,28 +633,30 @@ void main() {
       });
     });
 
-    group('RowIterator properties', () {
-      test('empty row has no content flags', () {
-        renderState.update(terminal);
-        rows.reset(renderState);
-        rows.next();
-        expect(rows.hasGrapheme, isFalse);
-        expect(rows.hasStyled, isFalse);
-        expect(rows.hasHyperlink, isFalse);
-        expect(rows.hasKittyVirtualPlaceholder, isFalse);
-        expect(rows.semanticPrompt, SemanticPrompt.none);
-      });
+    group('RowIterator', () {
+      group('properties', () {
+        test('empty row has no content flags', () {
+          renderState.update(terminal);
+          rows.reset(renderState);
+          rows.next();
+          expect(rows.hasGrapheme, isFalse);
+          expect(rows.hasStyled, isFalse);
+          expect(rows.hasHyperlink, isFalse);
+          expect(rows.hasKittyVirtualPlaceholder, isFalse);
+          expect(rows.semanticPrompt, SemanticPrompt.none);
+        });
 
-      test('styled row reports hasStyled', () {
-        terminal.write(Uint8List.fromList('\x1b[1mBold'.codeUnits));
-        renderState.update(terminal);
-        rows.reset(renderState);
-        rows.next();
-        expect(rows.hasStyled, isTrue);
+        test('styled row reports hasStyled', () {
+          terminal.write(Uint8List.fromList('\x1b[1mBold'.codeUnits));
+          renderState.update(terminal);
+          rows.reset(renderState);
+          rows.next();
+          expect(rows.hasStyled, isTrue);
+        });
       });
     });
 
-    group('CellIterator properties', () {
+    group('CellIterator', () {
       void advanceToFirstCell() {
         renderState.update(terminal);
         rows.reset(renderState);
@@ -663,18 +665,20 @@ void main() {
         cells.next();
       }
 
-      test('default cell has no styling, protection, or special content', () {
-        terminal.write(Uint8List.fromList('A'.codeUnits));
-        advanceToFirstCell();
-        expect(cells.style.bold, isFalse);
-        expect(cells.isProtected, isFalse);
-        expect(cells.semanticContent, SemanticContent.output);
-      });
+      group('properties', () {
+        test('default cell has no styling, protection, or special content', () {
+          terminal.write(Uint8List.fromList('A'.codeUnits));
+          advanceToFirstCell();
+          expect(cells.style.bold, isFalse);
+          expect(cells.isProtected, isFalse);
+          expect(cells.semanticContent, SemanticContent.output);
+        });
 
-      test('styled cell reports hasStyling', () {
-        terminal.write(Uint8List.fromList('\x1b[1mB'.codeUnits));
-        advanceToFirstCell();
-        expect(cells.hasStyling, isTrue);
+        test('styled cell reports hasStyling', () {
+          terminal.write(Uint8List.fromList('\x1b[1mB'.codeUnits));
+          advanceToFirstCell();
+          expect(cells.hasStyling, isTrue);
+        });
       });
     });
 
@@ -691,17 +695,8 @@ void main() {
         terminal.write(Uint8List.fromList('Hello'.codeUnits));
         renderState.update(terminal);
 
-        var count1 = 0;
-        rows.reset(renderState);
-        while (rows.next()) {
-          count1++;
-        }
-
-        var count2 = 0;
-        rows.reset(renderState);
-        while (rows.next()) {
-          count2++;
-        }
+        final count1 = _rowCount(rows, renderState);
+        final count2 = _rowCount(rows, renderState);
 
         expect(count1, greaterThan(0));
         expect(count2, count1);
@@ -736,6 +731,15 @@ void clearDirty(RenderState renderState, RowIterator rows) {
     rows.dirty = false;
   }
   renderState.dirty = DirtyState.clean;
+}
+
+int _rowCount(RowIterator rows, RenderState renderState) {
+  var count = 0;
+  rows.reset(renderState);
+  while (rows.next()) {
+    count++;
+  }
+  return count;
 }
 
 void _expectAllCellsEmpty(Terminal terminal) {

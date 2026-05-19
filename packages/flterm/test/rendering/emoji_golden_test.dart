@@ -14,18 +14,127 @@ import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:libghostty/libghostty.dart';
 
-import '../helpers/font_loader.dart';
+import 'helpers/font_loader.dart';
 
 void main() {
   setUpAll(loadBundledFonts);
 
   group('Emoji rendering', () {
+    const cjkFallback = ['Noto Sans JP', 'JetBrains Mono'];
+    const defaultCols = 25;
+    const emojiFallback = ['Noto Color Emoji', 'Noto Emoji', 'JetBrains Mono'];
+    const defaultRows = 5;
+
+    final baseTheme = TerminalTheme.dark().copyWith(
+      fontSize: 24.0,
+      fontFamilyFallback: bundledFontFamilyFallback,
+    );
+
+    TerminalTheme cursorTheme(CursorShape shape, {List<String>? fallback}) =>
+        TerminalTheme.dark().copyWith(
+          fontSize: 24.0,
+          fontFamilyFallback: fallback ?? bundledFontFamilyFallback,
+          cursor: CursorTheme(
+            shape: shape,
+            blinkInterval: const Duration(hours: 1),
+          ),
+        );
+
+    final cjkCursorTheme = cursorTheme(.block, fallback: cjkFallback);
+    final emojiCursorTheme = cursorTheme(.block, fallback: emojiFallback);
+
+    final emojiTheme = TerminalTheme.dark().copyWith(
+      fontSize: 24.0,
+      fontFamilyFallback: emojiFallback,
+    );
+
+    final mixedTheme = TerminalTheme.dark().copyWith(
+      fontSize: 24.0,
+      fontFamilyFallback: [
+        'Noto Color Emoji',
+        'Noto Emoji',
+        'Noto Sans JP',
+        'JetBrains Mono',
+      ],
+    );
+
+    TerminalRenderCache renderCache() {
+      final cache = TerminalRenderCache();
+      addTearDown(cache.dispose);
+      return cache;
+    }
+
+    void writeRawBytes(Terminal terminal, List<int> bytes) {
+      terminal.write(Uint8List.fromList(bytes));
+    }
+
+    void writeUtf8(Terminal terminal, String text) {
+      writeRawBytes(terminal, utf8.encode(text));
+    }
+
+    void writeCodepoint(Terminal terminal, int codepoint) {
+      writeRawBytes(terminal, utf8.encode(String.fromCharCodes([codepoint])));
+    }
+
+    void writeEmojiGrid(Terminal terminal, List<List<int>> rows) {
+      for (var row = 0; row < rows.length; row++) {
+        if (row > 0) writeUtf8(terminal, '\r\n');
+        for (final codepoint in rows[row]) {
+          writeCodepoint(terminal, codepoint);
+        }
+      }
+    }
+
+    Future<void> pumpRenderer(
+      WidgetTester tester,
+      Terminal terminal,
+      CellMetrics metrics, {
+      int cols = defaultCols,
+      int rows = defaultRows,
+      TerminalTheme? theme,
+      TerminalSelection? selection,
+      bool focused = true,
+    }) async {
+      final resolvedTheme = theme ?? emojiTheme;
+      final width = cols * metrics.cellWidth;
+      final height = rows * metrics.cellHeight;
+      tester.view.devicePixelRatio = 1.0;
+      tester.view.physicalSize = Size(width, height);
+      addTearDown(() {
+        tester.view.resetPhysicalSize();
+        tester.view.resetDevicePixelRatio();
+      });
+
+      await tester.pumpWidget(
+        Directionality(
+          textDirection: TextDirection.ltr,
+          child: Align(
+            alignment: Alignment.topLeft,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(maxWidth: width, maxHeight: height),
+              child: TerminalRenderer(
+                terminal: terminal,
+                theme: resolvedTheme,
+                metrics: metrics,
+                offset: ViewportOffset.zero(),
+                renderCache: renderCache(),
+                renderObserver: _TestRenderObserver(
+                  selection: selection,
+                  hasFocus: focused,
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
     late CellMetrics metrics;
 
     setUp(() {
       metrics = measureCellMetrics(
-        fontFamily: _baseTheme.fontFamily,
-        fontSize: _baseTheme.fontSize,
+        fontFamily: baseTheme.fontFamily,
+        fontSize: baseTheme.fontSize,
         fontData: jetBrainsMonoBytes,
       );
     });
@@ -38,7 +147,7 @@ void main() {
         addTearDown(terminal.dispose);
 
         // dart format off
-        terminal.writeEmojiGrid([
+        writeEmojiGrid(terminal, [
           [0x1F600, 0x1F603, 0x1F604, 0x1F601, 0x1F606, 0x1F605, 0x1F602, 0x1F923, 0x1F60A, 0x1F607],
           [0x1F642, 0x1F643, 0x1F609, 0x1F60C, 0x1F60D, 0x1F970, 0x1F618, 0x1F617, 0x1F619, 0x1F61A],
           [0x1F60B, 0x1F61B, 0x1F61C, 0x1F92A, 0x1F61D, 0x1F911, 0x1F917, 0x1F92D, 0x1F92B, 0x1F914],
@@ -48,11 +157,11 @@ void main() {
           [0x1F62F, 0x1F632, 0x1F633, 0x1F97A, 0x1F626, 0x1F627, 0x1F628, 0x1F630, 0x1F625, 0x1F622],
           [0x1F62D, 0x1F631, 0x1F616, 0x1F623, 0x1F61E, 0x1F613, 0x1F629, 0x1F62B, 0x1F971, 0x1F624],
           [0x1F621, 0x1F620, 0x1F92C, 0x1F44D, 0x1F44E, 0x1F44C, 0x1F90C, 0x1F90F, 0x1F91E, 0x1F919],
-          [0x1F44B, 0x1F91A, 0x1F596, 0x1F44F, 0x1F64F, 0x1F91D, 0x1F525, 0x1F680, 0x1F4AF, 0x2705 ],
+          [0x1F44B, 0x1F91A, 0x1F596, 0x1F44F, 0x1F64F, 0x1F91D, 0x1F525, 0x1F680, 0x1F4AF, 0x2705],
         ]);
         // dart format on
 
-        await _pumpRenderer(
+        await pumpRenderer(
           tester,
           terminal,
           metrics,
@@ -66,45 +175,43 @@ void main() {
       });
 
       testWidgets('mixed content: emoji, CJK, ASCII, VS16', (tester) async {
-        final terminal = Terminal(cols: _cols, rows: _rows);
+        final terminal = Terminal(cols: defaultCols, rows: defaultRows);
         addTearDown(terminal.dispose);
         terminal.modeSet(const TerminalMode.graphemeCluster(), value: true);
 
-        terminal.writeUtf8('A');
-        terminal.writeCodepoint(0x2705);
-        terminal.writeUtf8('B');
-        terminal.writeCodepoint(0x1F602);
-        terminal.writeUtf8('C');
-        terminal.writeCodepoint(0x274C);
-        terminal.writeUtf8('D');
-        terminal.writeUtf8('\r\n');
-        terminal.writeRawBytes([
-          0xE6, 0x97, 0xA5, // 日
-          0xE6, 0x9C, 0xAC, // 本
-          0xE8, 0xAA, 0x9E, // 語
-          0xE4, 0xB8, 0xAD, // 中
-          0xE6, 0x96, 0x87, // 文
+        writeUtf8(terminal, 'A');
+        writeCodepoint(terminal, 0x2705);
+        writeUtf8(terminal, 'B');
+        writeCodepoint(terminal, 0x1F602);
+        writeUtf8(terminal, 'C');
+        writeCodepoint(terminal, 0x274C);
+        writeUtf8(terminal, 'D');
+        writeUtf8(terminal, '\r\n');
+        // dart format off
+        writeRawBytes(terminal, [
+          0xE6, 0x97, 0xA5,
+          0xE6, 0x9C, 0xAC,
+          0xE8, 0xAA, 0x9E,
+          0xE4, 0xB8, 0xAD,
+          0xE6, 0x96, 0x87,
         ]);
-        terminal.writeUtf8('\r\n');
-        terminal.writeRawBytes([
+        // dart format on
+        writeUtf8(terminal, '\r\n');
+        // dart format off
+        writeRawBytes(terminal, [
           ...utf8.encode('I '),
-          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F, // ❤️ (VS16)
+          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F,
           ...utf8.encode(' Dart'),
         ]);
-        terminal.writeUtf8('\r\n');
-        terminal.writeRawBytes([
-          0xE6, 0x97, 0xA5, // 日
-        ]);
-        terminal.writeCodepoint(0x2705);
-        terminal.writeRawBytes([
-          0xE6, 0x9C, 0xAC, // 本
-        ]);
-        terminal.writeCodepoint(0x1F602);
-        terminal.writeRawBytes([
-          0xE8, 0xAA, 0x9E, // 語
-        ]);
+        // dart format on
+        writeUtf8(terminal, '\r\n');
+        writeRawBytes(terminal, [0xE6, 0x97, 0xA5]);
+        writeCodepoint(terminal, 0x2705);
+        writeRawBytes(terminal, [0xE6, 0x9C, 0xAC]);
+        writeCodepoint(terminal, 0x1F602);
+        writeRawBytes(terminal, [0xE8, 0xAA, 0x9E]);
 
-        await _pumpRenderer(tester, terminal, metrics, theme: _mixedTheme);
+        await pumpRenderer(tester, terminal, metrics, theme: mixedTheme);
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/emoji_grid_mixed.png'),
@@ -112,8 +219,6 @@ void main() {
       });
     });
 
-    // VS16 tests enable mode 2027 (grapheme clustering) so variation
-    // selectors make emoji wide (2 cells), the standard terminal behavior.
     group('VS16 emoji', () {
       testWidgets('VS16 emoji grid with mode 2027', (tester) async {
         // dart format off
@@ -130,6 +235,7 @@ void main() {
           0x2B06, 0x2B07, 0x2B50, 0x2B55,
         ];
         // dart format on
+
         const gridCols = 40;
         const gridRows = 10;
         final terminal = Terminal(cols: gridCols, rows: gridRows);
@@ -137,12 +243,13 @@ void main() {
         terminal.modeSet(const TerminalMode.graphemeCluster(), value: true);
 
         for (final codepoint in vs16Codepoints) {
-          terminal.writeRawBytes(
+          writeRawBytes(
+            terminal,
             utf8.encode(String.fromCharCodes([codepoint, 0xFE0F])),
           );
         }
 
-        await _pumpRenderer(
+        await pumpRenderer(
           tester,
           terminal,
           metrics,
@@ -156,32 +263,32 @@ void main() {
       });
 
       testWidgets('VS16 mixed content', (tester) async {
-        // Row 1: A❤️B (heart between ASCII).
-        // Row 2: 😂❤️✅✌️☺️ (VS16 adjacent to standard wide emoji).
         const cols = 25;
         const rows = 2;
         final terminal = Terminal(cols: cols, rows: rows);
         addTearDown(terminal.dispose);
         terminal.modeSet(const TerminalMode.graphemeCluster(), value: true);
 
-        terminal.writeRawBytes([
+        // dart format off
+        writeRawBytes(terminal, [
           ...utf8.encode('A'),
-          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F, // ❤️
+          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F,
           ...utf8.encode('B'),
         ]);
-        terminal.writeUtf8('\r\n');
+        // dart format on
+        writeUtf8(terminal, '\r\n');
 
-        terminal.writeCodepoint(0x1F602);
-        terminal.writeRawBytes([
-          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F, // ❤️
+        writeCodepoint(terminal, 0x1F602);
+        writeRawBytes(terminal, [0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F]);
+        writeCodepoint(terminal, 0x2705);
+        // dart format off
+        writeRawBytes(terminal, [
+          0xE2, 0x9C, 0x8C, 0xEF, 0xB8, 0x8F,
+          0xE2, 0x98, 0xBA, 0xEF, 0xB8, 0x8F,
         ]);
-        terminal.writeCodepoint(0x2705);
-        terminal.writeRawBytes([
-          0xE2, 0x9C, 0x8C, 0xEF, 0xB8, 0x8F, // ✌️
-          0xE2, 0x98, 0xBA, 0xEF, 0xB8, 0x8F, // ☺️
-        ]);
+        // dart format on
 
-        await _pumpRenderer(tester, terminal, metrics, rows: rows);
+        await pumpRenderer(tester, terminal, metrics, rows: rows);
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/emoji_vs16.png'),
@@ -191,21 +298,16 @@ void main() {
 
     group('Cursor on emoji', () {
       testWidgets('block cursor on standard wide emoji', (tester) async {
-        final terminal = Terminal(cols: _cols, rows: _rows);
+        final terminal = Terminal(cols: defaultCols, rows: defaultRows);
         addTearDown(terminal.dispose);
-        terminal.writeRawBytes([
+        writeRawBytes(terminal, [
           ...utf8.encode('AB'),
           ...utf8.encode(String.fromCharCode(0x2705)),
           ...utf8.encode('CD'),
           ...utf8.encode('\x1b[1;3H'),
         ]);
 
-        await _pumpRenderer(
-          tester,
-          terminal,
-          metrics,
-          theme: _emojiCursorTheme,
-        );
+        await pumpRenderer(tester, terminal, metrics, theme: emojiCursorTheme);
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/emoji_cursor_block_on_emoji.png'),
@@ -213,22 +315,19 @@ void main() {
       });
 
       testWidgets('block cursor on VS16 emoji with mode 2027', (tester) async {
-        final terminal = Terminal(cols: _cols, rows: _rows);
+        final terminal = Terminal(cols: defaultCols, rows: defaultRows);
         addTearDown(terminal.dispose);
         terminal.modeSet(const TerminalMode.graphemeCluster(), value: true);
-        terminal.writeRawBytes([
+        // dart format off
+        writeRawBytes(terminal, [
           ...utf8.encode('AB'),
-          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F, // ❤️
+          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F,
           ...utf8.encode('CD'),
           ...utf8.encode('\x1b[1;3H'),
         ]);
+        // dart format on
 
-        await _pumpRenderer(
-          tester,
-          terminal,
-          metrics,
-          theme: _emojiCursorTheme,
-        );
+        await pumpRenderer(tester, terminal, metrics, theme: emojiCursorTheme);
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/emoji_cursor_block_on_vs16.png'),
@@ -236,16 +335,18 @@ void main() {
       });
 
       testWidgets('block cursor on CJK character', (tester) async {
-        final terminal = Terminal(cols: _cols, rows: _rows);
+        final terminal = Terminal(cols: defaultCols, rows: defaultRows);
         addTearDown(terminal.dispose);
-        terminal.writeRawBytes([
+        // dart format off
+        writeRawBytes(terminal, [
           ...utf8.encode('AB'),
-          0xE6, 0x97, 0xA5, // 日
+          0xE6, 0x97, 0xA5,
           ...utf8.encode('CD'),
           ...utf8.encode('\x1b[1;3H'),
         ]);
+        // dart format on
 
-        await _pumpRenderer(tester, terminal, metrics, theme: _cjkCursorTheme);
+        await pumpRenderer(tester, terminal, metrics, theme: cjkCursorTheme);
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/emoji_cursor_block_on_cjk.png'),
@@ -255,25 +356,27 @@ void main() {
 
     group('Selection over emoji', () {
       testWidgets('selection over mixed content with VS16', (tester) async {
-        final terminal = Terminal(cols: _cols, rows: _rows);
+        final terminal = Terminal(cols: defaultCols, rows: defaultRows);
         addTearDown(terminal.dispose);
         terminal.modeSet(const TerminalMode.graphemeCluster(), value: true);
 
-        terminal.writeRawBytes([
+        writeRawBytes(terminal, [
           ...utf8.encode('Hi'),
           ...utf8.encode(String.fromCharCode(0x2705)),
           ...utf8.encode('OK'),
         ]);
-        terminal.writeCodepoint(0x1F602);
-        terminal.writeUtf8('!');
-        terminal.writeUtf8('\r\n');
-        terminal.writeRawBytes([
+        writeCodepoint(terminal, 0x1F602);
+        writeUtf8(terminal, '!');
+        writeUtf8(terminal, '\r\n');
+        // dart format off
+        writeRawBytes(terminal, [
           ...utf8.encode('X'),
-          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F, // ❤️
+          0xE2, 0x9D, 0xA4, 0xEF, 0xB8, 0x8F,
           ...utf8.encode('Y'),
         ]);
+        // dart format on
 
-        await _pumpRenderer(
+        await pumpRenderer(
           tester,
           terminal,
           metrics,
@@ -293,36 +396,32 @@ void main() {
 
     group('Styled emoji', () {
       testWidgets('emoji styles and edge cases', (tester) async {
-        // Row 1-4: B✅ F✅ I✅ U✅ (bold, faint, inverse, underlined emoji).
-        // Row 5: ✅😂 (emoji on green bg).
-        // Row 6: 23 A's + ✅ (wide emoji wraps at row boundary).
-        // Row 7: ✅❌😂😁👍👎end (dense emoji, verifies no text drift).
         const cols = 25;
         const rows = 7;
         final terminal = Terminal(cols: cols, rows: rows);
         addTearDown(terminal.dispose);
 
-        terminal.writeUtf8('\x1b[1mB');
-        terminal.writeCodepoint(0x2705);
-        terminal.writeUtf8('\x1b[0m\r\n');
-        terminal.writeUtf8('\x1b[2mF');
-        terminal.writeCodepoint(0x2705);
-        terminal.writeUtf8('\x1b[0m\r\n');
-        terminal.writeUtf8('\x1b[7mI');
-        terminal.writeCodepoint(0x2705);
-        terminal.writeUtf8('\x1b[0m\r\n');
-        terminal.writeUtf8('\x1b[4mU');
-        terminal.writeCodepoint(0x2705);
-        terminal.writeUtf8('\x1b[0m\r\n');
-        terminal.writeUtf8('\x1b[42;30m');
-        terminal.writeCodepoint(0x2705);
-        terminal.writeCodepoint(0x1F602);
-        terminal.writeUtf8('\x1b[0m\r\n');
+        writeUtf8(terminal, '\x1b[1mB');
+        writeCodepoint(terminal, 0x2705);
+        writeUtf8(terminal, '\x1b[0m\r\n');
+        writeUtf8(terminal, '\x1b[2mF');
+        writeCodepoint(terminal, 0x2705);
+        writeUtf8(terminal, '\x1b[0m\r\n');
+        writeUtf8(terminal, '\x1b[7mI');
+        writeCodepoint(terminal, 0x2705);
+        writeUtf8(terminal, '\x1b[0m\r\n');
+        writeUtf8(terminal, '\x1b[4mU');
+        writeCodepoint(terminal, 0x2705);
+        writeUtf8(terminal, '\x1b[0m\r\n');
+        writeUtf8(terminal, '\x1b[42;30m');
+        writeCodepoint(terminal, 0x2705);
+        writeCodepoint(terminal, 0x1F602);
+        writeUtf8(terminal, '\x1b[0m\r\n');
 
-        terminal.writeUtf8('AAAAAAAAAAAAAAAAAAAAAAA');
-        terminal.writeCodepoint(0x2705);
+        writeUtf8(terminal, 'AAAAAAAAAAAAAAAAAAAAAAA');
+        writeCodepoint(terminal, 0x2705);
 
-        await _pumpRenderer(tester, terminal, metrics, rows: rows);
+        await pumpRenderer(tester, terminal, metrics, rows: rows);
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/emoji_misc.png'),
@@ -336,15 +435,15 @@ void main() {
         const rows = 1;
         final terminal = Terminal(cols: cols, rows: rows);
         addTearDown(terminal.dispose);
-        terminal.writeCodepoint(0x2705);
-        terminal.writeCodepoint(0x274C);
-        terminal.writeCodepoint(0x1F602);
-        terminal.writeCodepoint(0x1F601);
-        terminal.writeCodepoint(0x1F44D);
-        terminal.writeCodepoint(0x1F44E);
-        terminal.writeUtf8('end');
+        writeCodepoint(terminal, 0x2705);
+        writeCodepoint(terminal, 0x274C);
+        writeCodepoint(terminal, 0x1F602);
+        writeCodepoint(terminal, 0x1F601);
+        writeCodepoint(terminal, 0x1F44D);
+        writeCodepoint(terminal, 0x1F44E);
+        writeUtf8(terminal, 'end');
 
-        await _pumpRenderer(tester, terminal, metrics, rows: rows);
+        await pumpRenderer(tester, terminal, metrics, rows: rows);
         await expectLater(
           find.byType(TerminalRenderer),
           matchesGoldenFile('goldens/emoji_dense_no_drift.png'),
@@ -352,92 +451,6 @@ void main() {
       });
     });
   });
-}
-
-const _cjkFallback = ['Noto Sans JP', 'JetBrains Mono'];
-const _cols = 25;
-const _emojiFallback = ['Noto Color Emoji', 'Noto Emoji', 'JetBrains Mono'];
-const _rows = 5;
-final _baseTheme = TerminalTheme.dark().copyWith(
-  fontSize: 24.0,
-  fontFamilyFallback: bundledFontFamilyFallback,
-);
-final _cjkCursorTheme = _cursorTheme(.block, fallback: _cjkFallback);
-final _emojiCursorTheme = _cursorTheme(.block, fallback: _emojiFallback);
-
-final _emojiTheme = TerminalTheme.dark().copyWith(
-  fontSize: 24.0,
-  fontFamilyFallback: _emojiFallback,
-);
-
-final _mixedTheme = TerminalTheme.dark().copyWith(
-  fontSize: 24.0,
-  fontFamilyFallback: [
-    'Noto Color Emoji',
-    'Noto Emoji',
-    'Noto Sans JP',
-    'JetBrains Mono',
-  ],
-);
-
-TerminalTheme _cursorTheme(CursorShape shape, {List<String>? fallback}) =>
-    TerminalTheme.dark().copyWith(
-      fontSize: 24.0,
-      fontFamilyFallback: fallback ?? bundledFontFamilyFallback,
-      cursor: CursorTheme(
-        shape: shape,
-        blinkInterval: const Duration(hours: 1),
-      ),
-    );
-
-Future<void> _pumpRenderer(
-  WidgetTester tester,
-  Terminal terminal,
-  CellMetrics metrics, {
-  int cols = _cols,
-  int rows = _rows,
-  TerminalTheme? theme,
-  TerminalSelection? selection,
-  bool focused = true,
-}) async {
-  final resolvedTheme = theme ?? _emojiTheme;
-  final width = cols * metrics.cellWidth;
-  final height = rows * metrics.cellHeight;
-  tester.view.devicePixelRatio = 1.0;
-  tester.view.physicalSize = Size(width, height);
-  addTearDown(() {
-    tester.view.resetPhysicalSize();
-    tester.view.resetDevicePixelRatio();
-  });
-
-  await tester.pumpWidget(
-    Directionality(
-      textDirection: TextDirection.ltr,
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: width, maxHeight: height),
-          child: TerminalRenderer(
-            terminal: terminal,
-            theme: resolvedTheme,
-            metrics: metrics,
-            offset: ViewportOffset.zero(),
-            renderCache: _renderCache(),
-            renderObserver: _TestRenderObserver(
-              selection: selection,
-              hasFocus: focused,
-            ),
-          ),
-        ),
-      ),
-    ),
-  );
-}
-
-TerminalRenderCache _renderCache() {
-  final cache = TerminalRenderCache();
-  addTearDown(cache.dispose);
-  return cache;
 }
 
 class _TestRenderObserver implements TerminalRenderObserver {
@@ -454,23 +467,4 @@ class _TestRenderObserver implements TerminalRenderObserver {
 
   @override
   void removeListener(VoidCallback listener) {}
-}
-
-extension on Terminal {
-  void writeCodepoint(int codepoint) {
-    writeRawBytes(utf8.encode(String.fromCharCodes([codepoint])));
-  }
-
-  void writeEmojiGrid(List<List<int>> rows) {
-    for (var row = 0; row < rows.length; row++) {
-      if (row > 0) writeUtf8('\r\n');
-      for (final codepoint in rows[row]) {
-        writeCodepoint(codepoint);
-      }
-    }
-  }
-
-  void writeRawBytes(List<int> bytes) => write(Uint8List.fromList(bytes));
-
-  void writeUtf8(String text) => write(Uint8List.fromList(utf8.encode(text)));
 }

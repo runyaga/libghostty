@@ -19,63 +19,62 @@ void main() {
       terminal.dispose();
     });
 
-    test('content returns character at position', () {
-      final ref = GridRef.at(terminal, col: 0, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.content, 'H');
+    group('content', () {
+      test('returns content for selected cells', () {
+        final ref = GridRef.at(terminal, col: 0, row: 0);
+        addTearDown(ref.dispose);
+        expect(ref.content, 'H');
+
+        final otherRef = GridRef.at(terminal, col: 4, row: 0);
+        addTearDown(otherRef.dispose);
+        expect(otherRef.content, 'o');
+
+        final emptyRef = GridRef.at(terminal, col: 79, row: 23);
+        addTearDown(emptyRef.dispose);
+        expect(emptyRef.content, isEmpty);
+      });
     });
 
-    test('content at different column', () {
-      final ref = GridRef.at(terminal, col: 4, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.content, 'o');
+    group('handles', () {
+      test('returns valid cell and row handles', () {
+        final ref = GridRef.at(terminal, col: 0, row: 0);
+        addTearDown(ref.dispose);
+        expect(ref.cell, isNonZero);
+        expect(ref.row, isNonZero);
+      });
     });
 
-    test('cell returns valid handle', () {
-      final ref = GridRef.at(terminal, col: 0, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.cell, isNonZero);
+    group('style', () {
+      test('reflects bold attribute', () {
+        terminal.write(Uint8List.fromList('\x1b[1mB'.codeUnits));
+        final ref = GridRef.at(terminal, col: 5, row: 0);
+        addTearDown(ref.dispose);
+        expect(ref.style, isA<Style>());
+        expect(ref.style.bold, isTrue);
+      });
     });
 
-    test('row returns valid handle', () {
-      final ref = GridRef.at(terminal, col: 0, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.row, isNonZero);
+    group('graphemes', () {
+      test('returns codepoint list', () {
+        final ref = GridRef.at(terminal, col: 0, row: 0);
+        addTearDown(ref.dispose);
+        expect(ref.graphemes, contains(0x48));
+      });
     });
 
-    test('style reflects bold attribute', () {
-      terminal.write(Uint8List.fromList('\x1b[1mB'.codeUnits));
-      final ref = GridRef.at(terminal, col: 5, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.style, isA<Style>());
-      expect(ref.style.bold, isTrue);
-    });
+    group('wide', () {
+      test('returns cell width classification', () {
+        final ref = GridRef.at(terminal, col: 0, row: 0);
+        addTearDown(ref.dispose);
+        expect(ref.wide, CellWidth.narrow);
+        expect(ref.isWide, isFalse);
 
-    test('graphemes returns codepoint list', () {
-      final ref = GridRef.at(terminal, col: 0, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.graphemes, contains(0x48));
-    });
-
-    test('empty cell returns empty content', () {
-      final ref = GridRef.at(terminal, col: 79, row: 23);
-      addTearDown(ref.dispose);
-      expect(ref.content, isEmpty);
-    });
-
-    test('narrow character returns CellWidth.narrow', () {
-      final ref = GridRef.at(terminal, col: 0, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.wide, CellWidth.narrow);
-      expect(ref.isWide, isFalse);
-    });
-
-    test('wide character returns CellWidth.wide', () {
-      terminal.write(Uint8List.fromList([0xE6, 0x97, 0xA5]));
-      final ref = GridRef.at(terminal, col: 5, row: 0);
-      addTearDown(ref.dispose);
-      expect(ref.wide, CellWidth.wide);
-      expect(ref.isWide, isTrue);
+        terminal.write(Uint8List.fromList([0xE6, 0x97, 0xA5]));
+        final wideRef = GridRef.at(terminal, col: 5, row: 0);
+        addTearDown(wideRef.dispose);
+        expect(wideRef.wide, CellWidth.wide);
+        expect(wideRef.isWide, isTrue);
+      });
     });
   });
 }

@@ -93,15 +93,6 @@ void main() {
 
   group('downloadSource', () {
     late Directory tmpDir;
-
-    setUp(() {
-      tmpDir = Directory.systemTemp.createTempSync('download_source_test_');
-    });
-
-    tearDown(() {
-      tmpDir.deleteSync(recursive: true);
-    });
-
     late Uri packageRoot;
 
     setUp(() {
@@ -111,6 +102,10 @@ void main() {
       File.fromUri(
         packageRoot.resolve('ghostty.version'),
       ).writeAsStringSync('861a9cf537a58a380bc6a0784573b3de3a70415e\n');
+    });
+
+    tearDown(() {
+      tmpDir.deleteSync(recursive: true);
     });
 
     test('extracts tarball content to cache', () async {
