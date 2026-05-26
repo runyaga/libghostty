@@ -72,7 +72,7 @@ final class BoxLines extends SpriteGlyph {
       vLightRight,
     );
 
-    final paint = ctx.fill;
+    final paint = ctx.fill..isAntiAlias = false;
 
     switch (up) {
       case 1:
