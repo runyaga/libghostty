@@ -12,7 +12,7 @@ libghostty-vt engine.
 
 | Android | iOS | Linux | macOS | Web | Windows |
 |:-------:|:---:|:-----:|:-----:|:---:|:-------:|
-|    ✅    |  ✅  |   ✅   |   ✅   |  ✅  |    ✅    |
+|    ✓    |  ✓  |   ✓   |   ✓   |  ✓  |    ✓    |
 
 ## Overview
 
@@ -35,7 +35,7 @@ libghostty-vt engine.
 
 ```yaml
 dependencies:
-  flterm: ^0.0.2
+  flterm: ^0.0.3
 ```
 
 On web, initialize the wasm module once before mounting any terminal:

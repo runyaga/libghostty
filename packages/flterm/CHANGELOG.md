@@ -1,5 +1,35 @@
 # Changelog
 
+## 0.0.3
+
+### Breaking
+
+- **Flutter SDK floor**: requires Dart 3.12 and Flutter 3.44.
+
+### Added
+
+- **IME composition**: composing text appears at the terminal cursor
+  and works with platform text input.
+- **Sprite glyph rendering**: box drawing, block elements, Braille,
+  Powerline, geometric shapes, and legacy computing glyphs render
+  with built-in glyphs.
+- **Shared render caches**: `TerminalScope` lets multiple terminal
+  views share compatible rendering resources.
+- **APC buffer limits**: `TerminalConfig.apcBufferLimit` controls how
+  much APC payload data the terminal accepts.
+
+### Changed
+
+- **Rendering pipeline**: terminal frames share rendering caches and do
+  less repeated work between frames.
+
+### Fixed
+
+- **Keyboard input**: shifted printable keys and IME editing produce
+  the expected terminal text.
+- **Rendering accuracy**: erased backgrounds, cursor shape, cell
+  metrics, and sprite glyphs render more consistently.
+
 ## 0.0.2
 
 ### Breaking
