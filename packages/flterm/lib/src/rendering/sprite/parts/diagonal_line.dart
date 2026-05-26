@@ -7,27 +7,41 @@ final class DiagonalLine extends SpriteGlyph {
 
   @override
   void paint(Canvas canvas, Rect cell, SpriteContext ctx) {
-    // Extend the line a half-step past each cell edge along the shorter
-    // axis so adjacent diagonals meet cleanly without gaps.
-    final slopeX = math.min(1.0, cell.width / cell.height);
-    final slopeY = math.min(1.0, cell.height / cell.width);
+    final thickness = ctx.thickness(cell);
+    final half = thickness / 2;
+    final start = topLeftToBottomRight
+        ? cell.topLeft
+        : Offset(cell.right, cell.top);
+    final end = topLeftToBottomRight
+        ? cell.bottomRight
+        : Offset(cell.left, cell.bottom);
+    final dx = end.dx - start.dx;
+    final dy = end.dy - start.dy;
+    final length = math.sqrt(dx * dx + dy * dy);
+    final ux = dx / length;
+    final uy = dy / length;
+    final nx = -uy * half;
+    final ny = ux * half;
+    // A diagonal stroke has to cross the cell corner so adjacent cells share
+    // the same stroke body instead of two separately capped segments.
+    final extension = thickness;
+    final extendedStart = Offset(
+      start.dx - ux * extension,
+      start.dy - uy * extension,
+    );
+    final extendedEnd = Offset(
+      end.dx + ux * extension,
+      end.dy + uy * extension,
+    );
 
-    ctx.stroke
-      ..strokeWidth = ctx.thickness(cell)
-      ..strokeCap = .butt;
+    ctx.path
+      ..reset()
+      ..moveTo(extendedStart.dx + nx, extendedStart.dy + ny)
+      ..lineTo(extendedEnd.dx + nx, extendedEnd.dy + ny)
+      ..lineTo(extendedEnd.dx - nx, extendedEnd.dy - ny)
+      ..lineTo(extendedStart.dx - nx, extendedStart.dy - ny)
+      ..close();
 
-    if (topLeftToBottomRight) {
-      canvas.drawLine(
-        Offset(cell.left - 0.5 * slopeX, cell.top - 0.5 * slopeY),
-        Offset(cell.right + 0.5 * slopeX, cell.bottom + 0.5 * slopeY),
-        ctx.stroke,
-      );
-    } else {
-      canvas.drawLine(
-        Offset(cell.right + 0.5 * slopeX, cell.top - 0.5 * slopeY),
-        Offset(cell.left - 0.5 * slopeX, cell.bottom + 0.5 * slopeY),
-        ctx.stroke,
-      );
-    }
+    canvas.drawPath(ctx.path, ctx.fill);
   }
 }

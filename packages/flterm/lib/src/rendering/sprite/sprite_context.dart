@@ -29,6 +29,7 @@ final class SpriteContext {
       ..color = fillColor
       ..blendMode = fillBlendMode
       ..style = .fill
+      ..isAntiAlias = true
       ..strokeWidth = 0.0
       ..strokeCap = .butt
       ..strokeJoin = .miter;
@@ -36,6 +37,7 @@ final class SpriteContext {
       ..color = strokeColor
       ..blendMode = strokeBlendMode
       ..style = .stroke
+      ..isAntiAlias = true
       ..strokeWidth = 0.0
       ..strokeCap = .butt
       ..strokeJoin = .miter;

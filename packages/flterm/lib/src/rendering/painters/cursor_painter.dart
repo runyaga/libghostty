@@ -75,7 +75,16 @@ class CursorPainter implements TerminalPainter {
           if (entry != null) {
             final atlasImage = _atlas.imageFor(entry);
             if (atlasImage == null) return;
+
             final inverseDpr = 1.0 / _atlas.devicePixelRatio;
+            final (sourceBearingX, sourceBearingY) = switch (entry.lane) {
+              .sprite || .text => (
+                entry.bearingX * inverseDpr,
+                entry.bearingY * inverseDpr,
+              ),
+              _ => (0.0, 0.0),
+            };
+
             canvas.drawImageRect(
               atlasImage,
               Rect.fromLTRB(
@@ -85,8 +94,8 @@ class CursorPainter implements TerminalPainter {
                 entry.srcBottom,
               ),
               Rect.fromLTWH(
-                cursor.col * metrics.cellWidth,
-                cursor.row * metrics.cellHeight,
+                cursor.col * metrics.cellWidth + sourceBearingX,
+                cursor.row * metrics.cellHeight + sourceBearingY,
                 (entry.srcRight - entry.srcLeft) * inverseDpr,
                 (entry.srcBottom - entry.srcTop) * inverseDpr,
               ),

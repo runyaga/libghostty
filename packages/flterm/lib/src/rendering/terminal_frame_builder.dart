@@ -565,7 +565,13 @@ final class _ForegroundEmitter {
       case .emoji:
         _sprites.emoji.add(x, row.rowY, entry, _frame.inverseDpr);
       case .sprite:
-        _sprites.sprite.add(x, row.rowY, entry, _frame.inverseDpr, color);
+        _sprites.sprite.add(
+          x + entry.bearingX * _frame.inverseDpr,
+          row.rowY + entry.bearingY * _frame.inverseDpr,
+          entry,
+          _frame.inverseDpr,
+          color,
+        );
       case .text:
         final sprites = wideText ? _sprites.wide : _sprites.regular;
         sprites.add(x, row.rowY, entry, _frame.inverseDpr, color);

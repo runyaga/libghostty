@@ -18,13 +18,18 @@ final class AtlasEntry {
   /// Bottom edge of the glyph region in the atlas, in physical pixels.
   final double srcBottom;
 
-  /// Vertical offset from the cell top to the glyph baseline.
+  /// Vertical offset associated with the glyph's source pixels.
   ///
   /// For text glyphs, computed as `baseline - alphabeticBaseline`.
-  /// For emoji, centered vertically within the cell.
+  /// Sprite glyphs use this as a draw offset when their source rect includes
+  /// pixels outside the cell.
   final double bearingY;
 
-  /// Horizontal offset applied when rasterizing the glyph into the atlas.
+  /// Horizontal offset associated with the glyph's source pixels.
+  ///
+  /// Text glyphs use this while rasterizing into the atlas. Sprite glyphs use
+  /// this as a draw offset when their source rect includes pixels outside the
+  /// cell.
   final double bearingX;
 
   /// Atlas lane that owns this entry's source pixels.
