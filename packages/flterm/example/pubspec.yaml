@@ -1,7 +1,8 @@
 name: flterm_example
 description: Example app for flterm.
 version: 0.0.1-dev.1
-resolution: workspace
+# NOTE: not a workspace member (see root pubspec.yaml) — resolves standalone
+# against the sibling flterm via the path dep below.
 publish_to: none
 
 environment:

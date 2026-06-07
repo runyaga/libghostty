@@ -905,7 +905,10 @@ void main() {
           TextCapitalization.none.toString(),
         );
         expect(config['enableIMEPersonalizedLearning'], isFalse);
-        expect(config['enableInlinePrediction'], isFalse);
+        // enableInlinePrediction is intentionally NOT set on Flutter 3.41
+        // (added to TextInputConfiguration's constructor in 3.44), so it is
+        // absent from the serialized config rather than false.
+        expect(config['enableInlinePrediction'], isNull);
         expect(config['enableDeltaModel'], isTrue);
         expect(
           (config['inputType']! as Map<String, Object?>)['name'],

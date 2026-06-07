@@ -4,10 +4,14 @@ repository: https://github.com/elias8/libghostty
 environment:
   sdk: ^3.10.0
 
+# NOTE: packages/flterm (and its example) are intentionally NOT workspace
+# members. flterm is consumed by external repos as a git dependency
+# (`git: url: .../libghostty, path: packages/flterm`), which requires the
+# package to resolve standalone — workspace members can't. It depends on the
+# published `libghostty` from pub.dev, not the sibling, so it gains nothing
+# from workspace membership. Keep it out.
 workspace:
   - packages/libghostty
-  - packages/flterm
-  - packages/flterm/example
   - packages/ptyx
 
 hooks:
