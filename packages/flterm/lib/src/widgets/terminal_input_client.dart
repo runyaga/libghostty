@@ -72,7 +72,8 @@ final class TerminalInputClient with DeltaTextInputClient {
       smartQuotesType: .disabled,
       enableDeltaModel: true,
       enableSuggestions: false,
-      enableInlinePrediction: false,
+      // enableInlinePrediction was added after Flutter 3.41; its default
+      // (disabled here via enableSuggestions/autocorrect) matches anyway.
       enableInteractiveSelection: false,
       enableIMEPersonalizedLearning: false,
       keyboardAppearance: _keyboardAppearance,
@@ -105,10 +106,22 @@ final class TerminalInputClient with DeltaTextInputClient {
   void didChangeInputControl(TextInputControl? _, TextInputControl? _) {}
 
   void ensureAttached({Brightness keyboardAppearance = Brightness.dark}) {
-    _keyboardAppearance = keyboardAppearance;
     final connection = _connection;
-    if (connection == null) return _openConnection();
-    connection.updateConfig(_configuration);
+    if (connection == null) {
+      _keyboardAppearance = keyboardAppearance;
+      return _openConnection();
+    }
+    // Already attached. Re-sending the (unchanged) configuration is a no-op on
+    // native, but on web updateConfig drives DefaultTextEditingStrategy
+    // .applyConfiguration, which dereferences activeDomElement -- null whenever
+    // the hidden editable isn't the active DOM element (focus churn, or
+    // attached-but-not-shown). That throws a caught-but-noisy "Null check
+    // operator used on a null value" on every focus gain. Only push a config
+    // update when something actually changed.
+    if (_keyboardAppearance != keyboardAppearance) {
+      _keyboardAppearance = keyboardAppearance;
+      connection.updateConfig(_configuration);
+    }
   }
 
   void hide() => _closeConnection();
@@ -119,7 +132,8 @@ final class TerminalInputClient with DeltaTextInputClient {
   @override
   void insertTextPlaceholder(Size size) {}
 
-  @override
+  // onFocusReceived was added to TextInputClient after Flutter 3.41; keep the
+  // no-op but don't annotate @override on the older SDK.
   bool onFocusReceived() => false;
 
   @override

@@ -49,12 +49,16 @@ class AtlasCache {
   );
 
   AtlasCache({
-    required this._textLane,
-    required this._emojiLane,
-    required this._spriteLane,
-    required this._decorationLane,
+    required TextLane textLane,
+    required EmojiLane emojiLane,
+    required SpriteLane spriteLane,
+    required DecorationLane decorationLane,
     SpriteFace? spriteFace,
-  }) : _spriteFace = spriteFace ?? SpriteFace();
+  })  : _textLane = textLane,
+        _emojiLane = emojiLane,
+        _spriteLane = spriteLane,
+        _decorationLane = decorationLane,
+        _spriteFace = spriteFace ?? SpriteFace();
 
   int get size {
     return _text.length + _emoji.length + _sprites.length + _decorations.length;

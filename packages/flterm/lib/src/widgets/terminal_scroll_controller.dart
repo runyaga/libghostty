@@ -66,9 +66,9 @@ class TerminalScrollPosition extends ScrollPositionWithSingleContext {
   TerminalScrollPosition({
     required super.physics,
     required super.context,
-    required this._activeScreen,
+    required TerminalScreen activeScreen,
     super.oldPosition,
-  });
+  }) : _activeScreen = activeScreen;
 
   TerminalScreen get activeScreen => _activeScreen;
 

@@ -22,7 +22,8 @@ class KittyImageCache {
 
   /// [onImageReady] fires when a pending decode completes; typically
   /// wired to a render box's `markNeedsPaint`.
-  KittyImageCache({required this._onImageReady});
+  KittyImageCache({required VoidCallback onImageReady})
+      : _onImageReady = onImageReady;
 
   /// Releases every cached entry. Call before discarding the cache.
   void dispose() {

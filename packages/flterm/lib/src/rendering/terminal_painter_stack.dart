@@ -41,13 +41,15 @@ final class TerminalPainterStack {
 
   TerminalPainterStack({
     required Atlas atlas,
-    required this._sprites,
-    required this._state,
+    required SpriteBuffer sprites,
+    required TerminalPaintState state,
     required void Function() onImageReady,
-  }) : _kittyImageCache = KittyImageCache(onImageReady: onImageReady),
-       _shapedRunPainter = ShapedRunPainter(_sprites.shaped),
-       _backgroundPainter = BackgroundPainter(_state, _sprites),
-       _decorationPainter = DecorationPainter(_sprites) {
+  })  : _sprites = sprites,
+        _state = state,
+        _kittyImageCache = KittyImageCache(onImageReady: onImageReady),
+        _shapedRunPainter = ShapedRunPainter(sprites.shaped),
+        _backgroundPainter = BackgroundPainter(state, sprites),
+        _decorationPainter = DecorationPainter(sprites) {
     _kittyBelowBgPainter = KittyGraphicsPainter(
       state: _state,
       cache: _kittyImageCache,

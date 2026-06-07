@@ -180,19 +180,25 @@ class TerminalRenderBox extends RenderBox {
   late final TerminalRenderPipeline _pipeline;
 
   TerminalRenderBox({
-    required this._terminal,
+    required Terminal terminal,
     required TerminalTheme theme,
     required CellMetrics metrics,
-    required this._offset,
-    required this._renderObserver,
-    required this._renderCache,
+    required ViewportOffset offset,
+    required TerminalRenderObserver renderObserver,
+    required TerminalRenderCache renderCache,
     bool blinkVisible = true,
-    this._preeditText = '',
-    this._onResize,
-  }) : _paintState = TerminalPaintState(theme, metrics)
-         ..blinkVisible = blinkVisible
-         ..selection = _renderObserver.selection
-         ..cursorFocused = _renderObserver.hasFocus {
+    String preeditText = '',
+    OnResize? onResize,
+  })  : _terminal = terminal,
+        _offset = offset,
+        _renderObserver = renderObserver,
+        _renderCache = renderCache,
+        _preeditText = preeditText,
+        _onResize = onResize,
+        _paintState = TerminalPaintState(theme, metrics)
+          ..blinkVisible = blinkVisible
+          ..selection = renderObserver.selection
+          ..cursorFocused = renderObserver.hasFocus {
     _atlasHandle = _renderCache.acquireAtlas(
       .fromTheme(
         theme: theme,

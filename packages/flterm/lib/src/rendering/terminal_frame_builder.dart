@@ -1100,14 +1100,17 @@ final class _TerminalRowBuilder {
   _PreeditRange? _preeditRange;
 
   _TerminalRowBuilder({
-    required this._atlas,
-    required this._sprites,
-    required this._state,
+    required Atlas atlas,
+    required SpriteBuffer sprites,
+    required TerminalPaintState state,
     required CellContentResolver content,
-  }) : _frame = _FrameSnapshot(),
-       _row = _RowBuildState(),
-       _styles = _StyleResolver(_state) {
-    _foreground = _ForegroundEmitter(_sprites, content, _frame, _state);
+  })  : _atlas = atlas,
+        _sprites = sprites,
+        _state = state,
+        _frame = _FrameSnapshot(),
+        _row = _RowBuildState(),
+        _styles = _StyleResolver(state) {
+    _foreground = _ForegroundEmitter(sprites, content, _frame, state);
   }
 
   bool get hasPreedit => _preeditRange != null;

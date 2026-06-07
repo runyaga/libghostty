@@ -125,12 +125,15 @@ final class ColorPalette {
   }
 
   const ColorPalette._({
-    required this._colors,
+    required List<Color> colors,
     required this.background,
     required this.foreground,
-    required this._generated,
-    required this._harmonious,
-  }) : assert(_colors.length == 256, 'palette must contain exactly 256 colors');
+    required bool generated,
+    required bool harmonious,
+  })  : _colors = colors,
+        _generated = generated,
+        _harmonious = harmonious,
+        assert(colors.length == 256, 'palette must contain exactly 256 colors');
 
   /// The 16 ANSI base colors (indices 0–15) supplied at construction.
   List<Color> get ansiColors => UnmodifiableListView(_colors.take(16));

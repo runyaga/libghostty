@@ -170,6 +170,15 @@ class TerminalControllerImpl extends TerminalController
     };
   }
 
+  // True on platforms whose text-input host owns printable input. Includes
+  // desktop and all web targets — letting the Flutter text input commit each
+  // printable key (instead of double-emitting from the raw-key path) is what
+  // keeps Firefox web in sync with Chromium, since Firefox's synthesized
+  // keydown doesn't honor preventDefault for the matching text insertion.
+  bool get _printableInputBelongsToTextInput {
+    return _isDesktopPlatform || kIsWeb;
+  }
+
   bool get _shouldForwardCompositionKeyToTextInput {
     return _hasActiveComposition && _textInput.isAttached && _isDesktopPlatform;
   }
@@ -883,12 +892,12 @@ class TerminalControllerImpl extends TerminalController
     required String encoded,
     required Mods mods,
   }) {
-    // Desktop printable keys are offered to Flutter text input only when the
-    // terminal encoder produced the same literal character. Any protocol,
-    // modifier, or composition-sensitive key stays on the terminal path.
+    // Printable keys are offered to Flutter text input only when the terminal
+    // encoder produced the same literal character. Any protocol, modifier, or
+    // composition-sensitive key stays on the terminal path.
     if (encoded != character) return false;
     if (_hasActiveComposition || !_textInput.isAttached) return false;
-    if (!_isDesktopPlatform) return false;
+    if (!_printableInputBelongsToTextInput) return false;
     if (action != .press && action != .repeat) return false;
     if (!_virtualMods.isEmpty) return false;
     return !mods.hasCtrl && !mods.hasAlt && !mods.hasSuper;

@@ -4,7 +4,10 @@ version: 0.0.3
 homepage: https://github.com/elias8/libghostty
 repository: https://github.com/elias8/libghostty/tree/main/packages/flterm
 issue_tracker: https://github.com/elias8/libghostty/issues
-resolution: workspace
+# NOTE (klangk fork): `resolution: workspace` removed so this package resolves
+# standalone when consumed as a git dependency (`git: ... path: packages/flterm`).
+# Workspace members can't be resolved outside their workspace root, which a git
+# dependency has no view of. Keep this out on the klangk branch.
 
 # This package supports all platforms listed below.
 platforms:
@@ -22,16 +25,20 @@ topics:
   - libghostty
   - vt100
 
+# NOTE (klangk fork): SDK/Flutter floor lowered from sdk ^3.12.0 / flutter
+# >=3.44.0 to build on the nix toolchain (Flutter 3.41.6 / Dart 3.11.4). The
+# upstream 0.0.3 source only needs 3.44 for Dart 3.12 private-named parameters,
+# which the klangk branch rewrites to public params + initializer assignments.
 environment:
-  sdk: ^3.12.0
-  flutter: ">=3.44.0"
+  sdk: ^3.11.0
+  flutter: ">=3.41.0"
 
 dependencies:
   flutter:
     sdk: flutter
   image: ^4.8.0
   libghostty: ^0.0.9
-  meta: ^1.18.0
+  meta: ^1.16.0
 
 dev_dependencies:
   flutter_test:
