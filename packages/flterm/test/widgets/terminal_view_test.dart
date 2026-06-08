@@ -900,6 +900,85 @@ void main() {
       expect(find.byType(TerminalView), findsOneWidget);
     });
 
+    testWidgets('keeps the scrolled-up viewport when new output arrives', (
+      tester,
+    ) async {
+      final sc = TerminalScrollController();
+      addTearDown(sc.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 800,
+              height: 480,
+              child: TerminalView(
+                controller: controller,
+                scrollController: sc,
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      writeNumberedLines(200);
+      await tester.pumpAndSettle();
+      expect(sc.position.maxScrollExtent, greaterThan(0));
+
+      // Scroll up ~half a screen (as Shift+PgUp / the wheel would), which
+      // clears stick-to-bottom in the renderer's _onScroll.
+      sc.jumpTo(sc.position.maxScrollExtent / 2);
+      await tester.pumpAndSettle();
+      final scrolledPixels = sc.position.pixels;
+      expect(scrolledPixels, lessThan(sc.position.maxScrollExtent));
+
+      // New output streams in: libghostty auto-follows to the bottom, but the
+      // viewport must stay where the user left it (not snap back).
+      writeNumberedLines(50);
+      await tester.pumpAndSettle();
+
+      expect(
+        sc.position.pixels,
+        closeTo(scrolledPixels, 1.0),
+        reason:
+            'scrolled-up viewport must be preserved during streaming output',
+      );
+    });
+
+    testWidgets('follows new output while pinned to the bottom', (
+      tester,
+    ) async {
+      final sc = TerminalScrollController();
+      addTearDown(sc.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 800,
+              height: 480,
+              child: TerminalView(
+                controller: controller,
+                scrollController: sc,
+                padding: EdgeInsets.zero,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      writeNumberedLines(200);
+      await tester.pumpAndSettle();
+      // At the bottom (the user has not scrolled away).
+      expect(sc.position.pixels, closeTo(sc.position.maxScrollExtent, 1.0));
+
+      writeNumberedLines(50);
+      await tester.pumpAndSettle();
+      // Still pinned to the bottom — new output is followed.
+      expect(sc.position.pixels, closeTo(sc.position.maxScrollExtent, 1.0));
+    });
+
     testWidgets('showKeyboard false skips keyboard show on focus', (
       tester,
     ) async {

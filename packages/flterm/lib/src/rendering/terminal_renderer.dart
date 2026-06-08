@@ -189,16 +189,16 @@ class TerminalRenderBox extends RenderBox {
     bool blinkVisible = true,
     String preeditText = '',
     OnResize? onResize,
-  })  : _terminal = terminal,
-        _offset = offset,
-        _renderObserver = renderObserver,
-        _renderCache = renderCache,
-        _preeditText = preeditText,
-        _onResize = onResize,
-        _paintState = TerminalPaintState(theme, metrics)
-          ..blinkVisible = blinkVisible
-          ..selection = renderObserver.selection
-          ..cursorFocused = renderObserver.hasFocus {
+  }) : _terminal = terminal,
+       _offset = offset,
+       _renderObserver = renderObserver,
+       _renderCache = renderCache,
+       _preeditText = preeditText,
+       _onResize = onResize,
+       _paintState = TerminalPaintState(theme, metrics)
+         ..blinkVisible = blinkVisible
+         ..selection = renderObserver.selection
+         ..cursorFocused = renderObserver.hasFocus {
     _atlasHandle = _renderCache.acquireAtlas(
       .fromTheme(
         theme: theme,
@@ -581,20 +581,27 @@ class TerminalRenderBox extends RenderBox {
     final cellHeight = _paintState.metrics.cellHeight;
     final maxExtent = scrollbackLen * cellHeight;
 
-    // Detect if the terminal was scrolled to bottom externally.
-    if (!_stickToBottom &&
-        scrollbackLen > 0 &&
-        scrollbar.offset >= scrollbackLen) {
-      _stickToBottom = true;
-    }
-
     if (_stickToBottom && maxExtent > 0) {
+      // Following live output: keep the viewport pinned to the bottom.
       final correction = maxExtent - _offset.pixels;
       if (correction.abs() > 0.01) _offset.correctBy(correction);
       if (scrollbar.offset < scrollbackLen) _terminal.scrollToBottom();
+    } else if (!_stickToBottom && maxExtent > 0) {
+      // The user has scrolled up. libghostty auto-follows new output to the
+      // bottom on every write, so without this the viewport would snap back
+      // to the latest line while a program streams (you could never stay
+      // scrolled up). Re-sync libghostty's viewport to the user's Flutter
+      // scroll position so the scrolled-up view stays put during output.
+      final pixels = _offset.pixels.clamp(0.0, maxExtent);
+      final targetOffset = (pixels / cellHeight).floor();
+      final delta = targetOffset - scrollbar.offset;
+      if (delta != 0) _terminal.scrollViewport(delta);
     }
     _offset.applyContentDimensions(0, maxExtent);
     _lastScrollbackRows = scrollbackLen;
+    // Stick-to-bottom is user intent: it follows the Flutter scroll position
+    // only. It must NOT be re-engaged just because libghostty's viewport sits
+    // at the bottom (that happens on every output write).
     _stickToBottom = maxExtent <= 0 || _offset.pixels >= maxExtent - cellHeight;
   }
 
