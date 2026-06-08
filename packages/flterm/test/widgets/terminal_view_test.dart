@@ -103,6 +103,7 @@ void main() {
       EdgeInsets padding = EdgeInsets.zero,
       double width = 800,
       double height = 480,
+      bool Function(KeyEvent event, TerminalScreen screen)? bypassKey,
     }) {
       return MaterialApp(
         home: Scaffold(
@@ -117,6 +118,7 @@ void main() {
               mouseAutoHide: mouseAutoHide,
               gestureSettings: gestureSettings,
               padding: padding,
+              bypassKey: bypassKey,
             ),
           ),
         ),
@@ -1082,6 +1084,107 @@ void main() {
       await tester.pump();
 
       expect(controller.selection!.endCol, 6);
+    });
+
+    group('bypassKey', () {
+      testWidgets('encodes the key to the PTY when no predicate is given', (
+        tester,
+      ) async {
+        final output = <Uint8List>[];
+        controller.onOutput = output.add;
+        await tester.pumpWidget(
+          wrapInApp(controller: controller, autofocus: true),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+        await tester.pump();
+
+        expect(
+          output,
+          isNotEmpty,
+          reason: 'PageUp should be encoded and forwarded to the PTY',
+        );
+      });
+
+      testWidgets('ignores the key (no PTY output) when predicate matches', (
+        tester,
+      ) async {
+        final output = <Uint8List>[];
+        controller.onOutput = output.add;
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            autofocus: true,
+            bypassKey: (event, screen) =>
+                event.logicalKey == LogicalKeyboardKey.pageUp,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+        await tester.pump();
+
+        expect(
+          output,
+          isEmpty,
+          reason: 'a bypassed key must not be encoded or sent to the PTY',
+        );
+      });
+
+      testWidgets('still forwards keys the predicate does not match', (
+        tester,
+      ) async {
+        final output = <Uint8List>[];
+        controller.onOutput = output.add;
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            autofocus: true,
+            bypassKey: (event, screen) =>
+                event.logicalKey == LogicalKeyboardKey.pageUp,
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.pageDown);
+        await tester.pump();
+
+        expect(
+          output,
+          isNotEmpty,
+          reason: 'PageDown is not bypassed, so it reaches the PTY',
+        );
+      });
+
+      testWidgets('receives the active screen (primary vs alternate)', (
+        tester,
+      ) async {
+        final screens = <TerminalScreen>[];
+        await tester.pumpWidget(
+          wrapInApp(
+            controller: controller,
+            autofocus: true,
+            bypassKey: (event, screen) {
+              screens.add(screen);
+              return false;
+            },
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+        await tester.pump();
+        expect(screens.last, TerminalScreen.primary);
+
+        // Switch to the alternate screen (CSI ?1049h) and check the predicate
+        // observes it.
+        writeUtf8(controller, '\x1b[?1049h');
+        await tester.pump();
+        await tester.sendKeyEvent(LogicalKeyboardKey.pageUp);
+        await tester.pump();
+        expect(screens.last, TerminalScreen.alternate);
+      });
     });
 
     group('virtual mods', () {

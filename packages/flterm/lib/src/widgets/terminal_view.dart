@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
+import 'package:libghostty/libghostty.dart' show TerminalScreen;
 
 import '../foundation.dart';
 import '../rendering.dart';
@@ -89,6 +90,19 @@ class TerminalView extends StatefulWidget {
   /// Ctrl+C/V/A/K on Windows.
   final Map<ShortcutActivator, Intent>? shortcuts;
 
+  /// When supplied and it returns true for a key event, the terminal treats
+  /// that event as [KeyEventResult.ignored]: the key is neither encoded nor
+  /// forwarded to the PTY, so it keeps bubbling to outer handlers — and, on
+  /// web, to the browser's own default action.
+  ///
+  /// The predicate receives the active [TerminalScreen] so embedders can pass
+  /// keys through only on the primary screen (e.g. let the browser scroll on
+  /// PageUp at the shell prompt, while still forwarding PageUp to a full-screen
+  /// program like `less`/`vim` on the alternate screen).
+  ///
+  /// Defaults to null (no bypass; all keys are handled as usual).
+  final bool Function(KeyEvent event, TerminalScreen screen)? bypassKey;
+
   /// Raw TTF/OTF font file bytes for exact metric extraction.
   ///
   /// When provided, takes priority over automatic font resolution. The
@@ -115,6 +129,7 @@ class TerminalView extends StatefulWidget {
     this.scrollPhysics,
     this.scrollController,
     this.shortcuts,
+    this.bypassKey,
   });
 
   @override
@@ -337,6 +352,13 @@ class _TerminalViewState extends State<TerminalView> {
   }
 
   KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    // Let the embedder claim a key as "pass through" before we encode it for
+    // the PTY. Returning ignored keeps the event bubbling to outer handlers
+    // (and, on web, to the browser default) instead of preventing the default.
+    if (widget.bypassKey != null &&
+        widget.bypassKey!(event, _controller.activeScreen)) {
+      return KeyEventResult.ignored;
+    }
     _updateTextInputGeometry();
     final result = _binding.handleKeyEvent(event);
 
