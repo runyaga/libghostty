@@ -165,6 +165,17 @@ abstract class TerminalController extends ChangeNotifier
   /// Scrolls the viewport to the top of the scrollback history.
   void scrollToTop();
 
+  /// Scrolls by [lines]: negative = toward history (up), positive = toward the
+  /// live row (down).
+  ///
+  /// On the **alternate screen** (vim/less/full-screen TUIs) there is no
+  /// scrollback, so this is translated to the wheel events the focused
+  /// application expects (or cursor keys when it isn't tracking the mouse) —
+  /// the same path the mouse wheel uses — letting the app page its own view.
+  /// On the **primary screen** it has no effect; drive the Flutter scrollback
+  /// (the attached scroll controller) there instead.
+  void handleScroll(int lines);
+
   /// Selects all terminal content including scrollback.
   void selectAll();
 
