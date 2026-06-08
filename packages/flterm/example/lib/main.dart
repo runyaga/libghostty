@@ -3,16 +3,47 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import 'demo_page.dart';
+import 'skwasm_repro_page.dart';
 import 'themes.dart';
+
+/// Build with `--dart-define=SKWASM_REPRO=true` to launch the skwasm WASM-heap
+/// crash repro instead of the rendering demo. See [SkwasmReproPage].
+// ignore: do_not_use_environment
+const _skwasmRepro = bool.fromEnvironment('SKWASM_REPRO');
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  if (_skwasmRepro) {
+    FlutterError.onError = (details) {
+      // ignore: avoid_print
+      print('FLUTTER-ERR: ${details.exceptionAsString()}');
+      FlutterError.presentError(details);
+    };
+    WidgetsBinding.instance.platformDispatcher.onError = (error, stack) {
+      // ignore: avoid_print
+      print('DART-ERR: $error\n$stack');
+      return true;
+    };
+  }
   if (kIsWeb) {
     await initializeForWeb(
       Uri.parse('assets/assets/libghostty-wasm32-freestanding.wasm'),
     );
   }
-  runApp(const _App());
+  runApp(_skwasmRepro ? const _ReproApp() : const _App());
+}
+
+class _ReproApp extends StatelessWidget {
+  const _ReproApp();
+
+  @override
+  Widget build(BuildContext context) => const MaterialApp(
+    debugShowCheckedModeBanner: false,
+    home: Scaffold(
+      backgroundColor: Colors.black,
+      body: SafeArea(child: SkwasmReproPage()),
+    ),
+  );
 }
 
 class _App extends StatefulWidget {
