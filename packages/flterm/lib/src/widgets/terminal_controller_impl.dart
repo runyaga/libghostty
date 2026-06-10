@@ -575,6 +575,15 @@ class TerminalControllerImpl extends TerminalController
   }
 
   @override
+  void handleLinkTap(int row, int col) {
+    final cb = onLinkTap;
+    if (cb == null) return;
+    final (:token, :uri, :tail) = terminal.linkAt(row, col);
+    if (token == null && uri == null) return;
+    cb((row: row, col: col, token: token ?? '', uri: uri, tail: tail));
+  }
+
+  @override
   void sendKey(vt.Key key, {Mods mods = const .none()}) {
     final effectiveMods = mods | _virtualMods;
     final codepoint = unshiftedCodepointForKey(key);

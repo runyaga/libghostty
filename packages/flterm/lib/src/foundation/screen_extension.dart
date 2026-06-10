@@ -3,6 +3,11 @@ import 'package:libghostty/libghostty.dart'
 
 final _defaultWordPattern = RegExp(r'\w');
 
+/// Per-cell charset for path/URL tokens: word chars plus the punctuation found
+/// inside file paths and URLs, so a token like `src/a_b.dart` or
+/// `https://x/y?q=1#z` expands as one unit instead of stopping at `/`.
+final _defaultLinkPattern = RegExp(r'[A-Za-z0-9._~:/?#@!$&*+=%-]');
+
 /// Selection and word-boundary helpers for [Terminal].
 ///
 /// Provides hit-testing and text navigation operations used by the gesture
@@ -197,6 +202,67 @@ extension TerminalScreenExtension on Terminal {
       }
 
       return (start, end);
+    } finally {
+      rs.dispose();
+    }
+  }
+
+  /// Returns the path/URL token, any OSC 8 hyperlink URI, and the row's text
+  /// from the token start to end-of-row (`tail`) at viewport cell ([row],
+  /// [col]). `token` is null when the cell isn't link-shaped; `uri` is null
+  /// when the cell carries no OSC 8 hyperlink; `tail` is `''` in those cases.
+  ///
+  /// `tail` lets the host greedy-extend across spaces (filenames may contain
+  /// them) — the bare token stops at the first non-link char, but the real
+  /// path may continue. ASCII-oriented (paths/URLs), so no wide-char snapping.
+  ({String? token, String? uri, String tail}) linkAt(
+    int row,
+    int col, {
+    Pattern? linkPattern,
+  }) {
+    final pattern = linkPattern ?? _defaultLinkPattern;
+    final rs = RenderState()..update(this);
+    try {
+      if (row < 0 || row >= rs.rows || col < 0 || col >= rs.cols) {
+        return (token: null, uri: null, tail: '');
+      }
+
+      String contentAt(int c) {
+        final ref = GridRef.at(this, col: c, row: row);
+        final s = ref.content;
+        ref.dispose();
+        return s;
+      }
+
+      final ref = GridRef.at(this, col: col, row: row);
+      final uri = ref.hyperlinkUri;
+      ref.dispose();
+
+      bool matches(String s) =>
+          s.isNotEmpty && pattern.matchAsPrefix(s) != null;
+      if (!matches(contentAt(col))) return (token: null, uri: uri, tail: '');
+
+      var start = col;
+      while (start > 0 && matches(contentAt(start - 1))) {
+        start--;
+      }
+      var end = col + 1;
+      while (end < rs.cols && matches(contentAt(end))) {
+        end++;
+      }
+      final buf = StringBuffer();
+      for (var c = start; c < end; c++) {
+        buf.write(contentAt(c));
+      }
+      // Tail: link start → end-of-row (empty cells as spaces), right-trimmed.
+      final tailBuf = StringBuffer();
+      for (var c = start; c < rs.cols; c++) {
+        final ch = contentAt(c);
+        tailBuf.write(ch.isEmpty ? ' ' : ch);
+      }
+      final tail = tailBuf.toString().replaceAll(RegExp(r'\s+$'), '');
+      final t = buf.toString();
+      return (token: t.isEmpty ? null : t, uri: uri, tail: tail);
     } finally {
       rs.dispose();
     }

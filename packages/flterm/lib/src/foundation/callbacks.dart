@@ -32,3 +32,13 @@ typedef TerminalMouseEvent = ({
   double pixelX,
   double pixelY,
 });
+
+/// Data for a modifier-click (⌘ on macOS / Ctrl elsewhere) over a path/URL
+/// token or an OSC 8 hyperlink. Fired on [TerminalController.onLinkTap].
+///
+/// [token] is the path/URL-shaped text under the clicked cell (empty when the
+/// cell isn't link-shaped); [uri] is the OSC 8 hyperlink URI when the cell
+/// carries one (else null); [tail] is the row's text from the token start to
+/// end-of-row, letting the host greedy-extend across spaces in filenames.
+/// [row]/[col] are the clicked viewport cell. The host resolves/opens these.
+typedef LinkTap = ({int row, int col, String token, String? uri, String tail});

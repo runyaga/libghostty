@@ -101,5 +101,49 @@ void main() {
         expect(terminal.lineBoundaryAt(99).endCol, 0);
       });
     });
+
+    group('linkAt', () {
+      void writeRow(String text) {
+        terminal.write(Uint8List.fromList(utf8.encode('\x1b[2J\x1b[H$text')));
+      }
+
+      test('extracts a path token (slashes/dots kept)', () {
+        writeRow('src/a_b.dart');
+        final r = terminal.linkAt(0, 1);
+        expect(r.token, 'src/a_b.dart');
+        expect(r.uri, isNull);
+      });
+
+      test('extracts a URL token (query/fragment kept)', () {
+        writeRow('https://x.io/y?q=1#z');
+        expect(terminal.linkAt(0, 0).token, 'https://x.io/y?q=1#z');
+      });
+
+      test('returns null token over a non-link cell', () {
+        writeRow('a b');
+        final r = terminal.linkAt(0, 1); // the space
+        expect(r.token, isNull);
+        expect(r.uri, isNull);
+      });
+
+      test('returns nulls for out-of-bounds cells', () {
+        expect(terminal.linkAt(-1, 0), (token: null, uri: null, tail: ''));
+        expect(terminal.linkAt(0, 999), (token: null, uri: null, tail: ''));
+      });
+
+      test('reports the OSC 8 hyperlink uri', () {
+        writeRow('\x1b]8;;https://e.test\x1b\\Link\x1b]8;;\x1b\\');
+        final r = terminal.linkAt(0, 0);
+        expect(r.uri, 'https://e.test');
+        expect(r.token, 'Link');
+      });
+
+      test('tail spans to end-of-row so spaces after the token are kept', () {
+        writeRow('a.md (1).pdf'); // fits the 20-col test grid
+        final r = terminal.linkAt(0, 0);
+        expect(r.token, 'a.md'); // bare token stops at the space
+        expect(r.tail, 'a.md (1).pdf'); // tail keeps the rest
+      });
+    });
   });
 }

@@ -1,5 +1,7 @@
 import 'dart:async';
 
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, defaultTargetPlatform;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/widgets.dart';
@@ -184,6 +186,20 @@ class _TerminalGestureDetectorState extends State<TerminalGestureDetector> {
   void _handleSingleTapDown(TapDownDetails details) {
     _binding.requestFocus();
     if (_isMouseTracked(HardwareKeyboard.instance.isShiftPressed)) return;
+    // Modifier-click opens a link/path under the cursor instead of clearing
+    // the selection: ⌘ on macOS (Ctrl is reserved for secondary-click there),
+    // Ctrl elsewhere. Accept hardware or virtual modifiers, matching
+    // [_isBlockModifierPressed].
+    final keyboard = HardwareKeyboard.instance;
+    final mods = _binding.virtualMods;
+    final linkModifier = defaultTargetPlatform == TargetPlatform.macOS
+        ? keyboard.isMetaPressed || mods.hasSuper
+        : keyboard.isControlPressed || mods.hasCtrl;
+    if (linkModifier) {
+      final (row, col) = widget.metrics.cellAt(details.localPosition);
+      _binding.handleLinkTap(row, col);
+      return;
+    }
     _binding.clearSelection();
   }
 
