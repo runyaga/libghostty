@@ -41,6 +41,11 @@ abstract class TerminalController extends ChangeNotifier
   /// Called when the grid dimensions change. Forward to your backend.
   OnResize? onResize;
 
+  /// Called on a modifier-click (⌘ on macOS / Ctrl elsewhere) over a path- or
+  /// URL-shaped token, or an OSC 8 hyperlink. The host resolves/opens the
+  /// [LinkTap.token] (or [LinkTap.uri]). No-op when unset.
+  ValueChanged<LinkTap>? onLinkTap;
+
   /// Creates a controller with the given [config].
   ///
   /// The terminal is created immediately with dimensions and scrollback

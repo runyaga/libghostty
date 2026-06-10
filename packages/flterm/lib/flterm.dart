@@ -21,7 +21,7 @@ export 'package:libghostty/libghostty.dart'
         UnderlineStyle,
         initializeForWeb;
 
-export 'src/foundation/callbacks.dart' show OnResize;
+export 'src/foundation/callbacks.dart' show LinkTap, OnResize;
 export 'src/foundation/color_palette.dart' show ColorPalette;
 export 'src/foundation/dynamic_color.dart' show DynamicColor;
 export 'src/foundation/input_types.dart' show KeyboardState, MouseAutoHide;

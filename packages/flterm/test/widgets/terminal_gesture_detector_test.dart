@@ -6,6 +6,8 @@ import 'dart:typed_data';
 
 import 'package:flterm/src/foundation.dart';
 import 'package:flterm/src/widgets.dart';
+import 'package:flutter/foundation.dart'
+    show TargetPlatform, debugDefaultTargetPlatformOverride;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/widgets.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -665,6 +667,73 @@ void main() {
         await gesture.up();
 
         expect(events, isEmpty);
+      });
+    });
+
+    group('modifier-click link tap', () {
+      testWidgets('⌘-click on macOS fires onLinkTap with the link token',
+          (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        writeToTerminal(controller, 'src/a_b.dart');
+        LinkTap? tap;
+        controller.onLinkTap = (t) => tap = t;
+        controller.toggleMod(const Mods.superKey());
+        await tester.pumpWidget(buildHandler(controller: controller));
+        await tapMouse(tester, const Offset(8, 0)); // row 0, col 1
+        debugDefaultTargetPlatformOverride = null; // clear before asserts
+        expect(tap, isNotNull);
+        expect(tap!.token, 'src/a_b.dart');
+        expect(tap!.row, 0);
+        expect(controller.selection, isNull);
+      });
+
+      testWidgets('Ctrl-click off macOS fires onLinkTap', (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.linux;
+        writeToTerminal(controller, 'src/a.dart');
+        LinkTap? tap;
+        controller.onLinkTap = (t) => tap = t;
+        controller.toggleMod(const Mods.ctrl());
+        await tester.pumpWidget(buildHandler(controller: controller));
+        await tapMouse(tester, const Offset(8, 0));
+        debugDefaultTargetPlatformOverride = null;
+        expect(tap, isNotNull);
+        expect(tap!.token, 'src/a.dart');
+      });
+
+      testWidgets('non-link modifier (Ctrl on macOS) does not tap a link',
+          (tester) async {
+        // On macOS, Ctrl is reserved for secondary-click — must NOT open links.
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        writeToTerminal(controller, 'src/a.dart');
+        var fired = false;
+        controller.onLinkTap = (_) => fired = true;
+        controller.toggleMod(const Mods.ctrl());
+        await tester.pumpWidget(buildHandler(controller: controller));
+        await tapMouse(tester, const Offset(8, 0));
+        debugDefaultTargetPlatformOverride = null;
+        expect(fired, isFalse);
+      });
+
+      testWidgets('does not fire over a blank cell', (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        var fired = false;
+        controller.onLinkTap = (_) => fired = true;
+        controller.toggleMod(const Mods.superKey());
+        await tester.pumpWidget(buildHandler(controller: controller));
+        await tapMouse(tester, const Offset(8, 0));
+        debugDefaultTargetPlatformOverride = null;
+        expect(fired, isFalse);
+      });
+
+      testWidgets('is a no-op when no onLinkTap handler is set',
+          (tester) async {
+        debugDefaultTargetPlatformOverride = TargetPlatform.macOS;
+        writeToTerminal(controller, 'src/a.dart');
+        controller.toggleMod(const Mods.superKey());
+        await tester.pumpWidget(buildHandler(controller: controller));
+        await tapMouse(tester, const Offset(8, 0)); // must not throw
+        debugDefaultTargetPlatformOverride = null;
+        expect(controller.selection, isNull);
       });
     });
   });

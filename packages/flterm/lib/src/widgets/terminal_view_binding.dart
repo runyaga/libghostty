@@ -85,6 +85,11 @@ abstract interface class TerminalViewBinding {
   /// detection with wide character snapping.
   void selectWord(int row, int col);
 
+  /// Reports a modifier-click over ([row], [col]). The controller extracts the
+  /// path/URL token (and any OSC 8 hyperlink) at that cell and fires
+  /// [TerminalController.onLinkTap].
+  void handleLinkTap(int row, int col);
+
   /// Creates a selection from drag coordinates, snapping columns to
   /// wide character boundaries and applying the viewport scroll offset.
   void updateSelection(
